@@ -1,39 +1,37 @@
-# Live parameter and wind validation
+# Controls, map sizes and concurrent predators
 
-Measured on 9 November 2026 using 10,000 boids, shoal enabled and 16 orbiting predators. A crossing predator is included during the beginning of each sample. Wind uses its default spatial/time scales and weights; the small-map stress case uses six octaves. Each sample follows a one-second settling period.
+Validation for [d968992](https://github.com/jkeywo/boids-test/commit/d968992), measured on 9 November 2026. Shoal now uses the same checkbox as the other five functors. The map selector offers 1024, 512 and 256 units. Each predator launch is independent of existing crossings; expired crossings leave individually.
 
-Hardware: Intel Core Ultra 9 275HX and NVIDIA GeForce RTX 5090 Laptop GPU, Windows x64. Both browsers run headless with normal requestAnimationFrame scheduling. Firefox reports a generic "GTX 980 ... or similar" renderer string on this PC.
+## Correctness
 
-| Browser | Map / backing buffer | Wind octaves | Sample | Mean FPS | p95 frame ms | p99 frame ms | Mean reported tick ms | Neighbour budget |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Chrome 156 | 1024 x 1024 | 3 | 60 s | 60.00 | 17.00 | 17.10 | 6.76 | 48-48 |
-| Chrome 156 | 512 x 512 | 6 | 60 s | 60.00 | 17.00 | 17.20 | 7.14 | 48-48 |
-| Firefox 142 | 512 x 512 | 6 | 5 s | 60.00 | 16.68 | 16.68 | 11.43 | 8-8 |
+- 10,192 checks pass in native MSVC C++ and Node-hosted WebAssembly. They cover all three map sizes, the dense 256 map at maximum interaction radius, 70 simultaneous launches, independent orbit/crossing lifecycles, and flee responses from predators beyond the old bitmask capacity.
+- Chromium and Firefox exercise all 27 sliders and six checkboxes, all three map sizes, and overlapping launches. A browser burst creates more than 40 crossings and verifies that the expanded instance buffer produces no WebGL error.
+- [CI build, browser checks and deployment](https://github.com/jkeywo/boids-test/actions/runs/42569998786) are green. The published WASM matches the locally tested binary byte for byte: SHA-256 `12467F6B087BC1F6EAD1CD018FD8EEBCF0BF08F15D91E1964A091B4D32603453`.
 
-Chrome sustained 60 fps for both full-minute samples. Firefox passed a short compatibility/stress sample at approximately 60 fps; its five-second result is not a full-minute performance claim. The simulation remains fixed at 60 Hz. Tick counts at measurement boundaries can differ by one tick.
+## 256-map performance
 
-Adaptive neighbour sampling keeps all 10,000 entities active. Budgets differ by browser and workload. Wind is sampled into a periodic 32 x 32 field at 15 Hz and interpolated in space and time; very fine octave detail is limited by the field resolution. These measurements apply to this PC. Real phone hardware and Safari remain untested.
+10,000 boids on a 256 x 256 map/backing buffer, shoal enabled, six-octave wind and 16 orbiting predators. Eight crossing predators launch before the one-second settling period; they exit during the start of the sample. The sample then continues with the orbiting predators. Browsers use normal requestAnimationFrame scheduling in headless mode.
 
-## Correctness and publication
+Hardware: Intel Core Ultra 9 275HX, NVIDIA GeForce RTX 5090 Laptop GPU, Windows x64. Firefox reports a generic "GTX 980 ... or similar" renderer string on this PC.
 
-- 10,108 checks pass under native MSVC C++ and Node-hosted WebAssembly. Tests include independent radii/toggles, parameter bounds/nonfinite input, shoal settings, map rescaling, predator broadphase changes, 3D-noise continuity/time variation, frozen wind time and field wrapping.
-- Browser checks exercise all 27 generated sliders, five new checkbox toggles and the existing shoal toggle, live map switching, orbit bounds, predator lifecycle and desktop/mobile layouts in Chromium and Firefox.
-- GitHub Actions runs native Linux, WASM and Chromium checks before deployment. [Release checks](https://github.com/jkeywo/boids-test/actions/runs/42541965308) are green.
-- Source: [9aaacca](https://github.com/jkeywo/boids-test/commit/9aaacca). The public WASM matches the locally tested binary byte for byte, SHA-256 `EB8DAA34280697F14ED485F0A7D7A24948736A2690061F79469ED53E237D81AF`.
+| Browser | Sample | Mean FPS | Simulation Hz | p95 frame ms | p99 frame ms | Mean reported tick ms | Neighbour budget |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Chrome 156 | 60 s | 60.00 | 59.98 | 17.00 | 17.10 | 7.17 | 48-48 |
+| Firefox 142 | 5 s | 42.52 | 60.00 | 33.34 | 33.34 | 15.05 | 8-8 |
 
-Raw local reports: `artifacts/wind-chrome-60s.json` and `artifacts/wind-firefox-smoke.json`. These ignored generated files contain complete settings, user agents and timing samples. The command prints a timing summary. [Earlier baseline measurements](https://github.com/jkeywo/boids-test/blob/cfc6ad6/BENCHMARKS.md) are archived with their tested source revision.
+Chrome sustained 60 fps for the full minute. Firefox passed the functional checks but renders this heavy 256-map scene below the 60 fps target, while maintaining approximately 60 simulation ticks per second. Its five-second run is a compatibility sample. Tick counts at sample boundaries can differ by one tick. Real mobile hardware and Safari remain untested.
+
+Raw local reports: `artifacts/maps256-chrome-60s.json` and `artifacts/maps256-firefox-smoke.json`. These generated files are ignored by Git. [Previous 1024/512 wind measurements](https://github.com/jkeywo/boids-test/blob/fcbba4b/BENCHMARKS.md) are archived with their tested revision.
 
 ## Reproduce
 
-After building and installing browser dependencies as described in README.md:
+After the build and browser setup in README.md:
 
 ```powershell
 $env:BROWSER_CHANNEL = 'chrome'
-$env:BENCHMARK_SCENARIOS = 'wind,wind-small'
+$env:BENCHMARK_SCENARIOS = 'wind-tiny'
 $env:BENCHMARK_SECONDS = '60'
 npm run test:browser
 ```
 
-For Firefox, install it with `npx playwright install firefox` and set `BROWSER_ENGINE=firefox`. Omit `BENCHMARK_SCENARIOS` to include all six scenarios. `TEST_URL=https://jkeywo.github.io/boids-test/` targets the deployed site.
-
-On real mobile hardware, use its remote developer console to call `boidsTest.startBenchmark()`, leave the visible page running for 60 seconds, then call `boidsTest.stopBenchmark()`. Record the device, browser version, settings, resolution and thermal conditions with the result.
+Set `BROWSER_ENGINE=firefox` to use Playwright Firefox. Omit `BENCHMARK_SCENARIOS` to run all seven cases. `TEST_URL=https://jkeywo.github.io/boids-test/` targets the published app. Reports save complete settings and user agents alongside timing data.
