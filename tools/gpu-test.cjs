@@ -198,7 +198,12 @@ const server = http.createServer((req, res) => {
     assert.equal(state.invalid, 0);
     assert(state.moved > 99990, JSON.stringify(state));
     assert.equal(state.turned, 0);
-    assert(Math.abs(state.maxSpeed - 180) < 0.01, JSON.stringify(state));
+    // WGSL trig is approximate: SwiftShader varies by ~0.04 units/s at speed 180.
+    assert(
+      Math.abs(state.maxSpeed - 180) < 0.1 &&
+        Math.abs(state.minSpeed - 180) < 0.1,
+      JSON.stringify(state),
+    );
     for (const world of [512, 256, 1024]) {
       await page.selectOption("#map-size", String(world));
       await settle();
@@ -247,7 +252,12 @@ const server = http.createServer((req, res) => {
     await settle();
     state = await inspect();
     assert.equal(state.boosted, 0);
-    assert(Math.abs(state.maxSpeed - 180) < 0.01, JSON.stringify(state));
+    // WGSL trig is approximate: SwiftShader varies by ~0.04 units/s at speed 180.
+    assert(
+      Math.abs(state.maxSpeed - 180) < 0.1 &&
+        Math.abs(state.minSpeed - 180) < 0.1,
+      JSON.stringify(state),
+    );
     await page.evaluate(() => {
       boidsTest.setParameter("flee-enabled", 1);
       boidsTest.setParameter("crossing-speed", 20);
