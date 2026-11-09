@@ -423,7 +423,7 @@ window.boidsTest = {
         (frameTimes.reduce((a, b) => a + b, 0) / 1000),
       minNeighbourBudget: minBudget,
       maxNeighbourBudget: maxBudget,
-      renderResolution: canvas.width,
+      renderResolution: activeMode === "gpu" ? gpuCanvas.width : canvas.width,
       userAgent: navigator.userAgent,
       population: this.population,
       backend: activeMode === "gpu" ? "WebGPU compute" : "C++/WASM + WebGL 2",

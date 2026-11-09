@@ -192,6 +192,27 @@ const server = http.createServer((req, res) => {
       await page.waitForTimeout(300);
       state = await inspect();
       assert.equal(state.invalid, 0, `GPU rescale ${world}`);
+      if (world === 256) {
+        // Radius 128 selects the special 2x2 grid: four unique cells, not nine aliases.
+        await page.evaluate(() => {
+          for (const name of ["cohesion", "alignment", "repulsion"]) {
+            boidsTest.setParameter(name + "-enabled", 1);
+            boidsTest.setParameter(name + "-radius", 128);
+          }
+        });
+        await page.waitForTimeout(500);
+        state = await inspect();
+        assert.equal(state.invalid, 0, "dense 2x2 GPU grid");
+        await page.evaluate(() => {
+          for (const name of ["cohesion", "alignment", "repulsion"]) {
+            boidsTest.setParameter(name + "-enabled", 0);
+            boidsTest.setParameter(
+              name + "-radius",
+              name === "repulsion" ? 10 : 32,
+            );
+          }
+        });
+      }
       assert(
         Number(await page.locator("#gpu-simulation").getAttribute("width")) <=
           world,

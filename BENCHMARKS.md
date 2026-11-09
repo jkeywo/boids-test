@@ -1,3 +1,31 @@
+# 100,000-boid GPU mode
+
+Measured on 9 November 2026 for [ebb8e87](https://github.com/jkeywo/boids-test/commit/ebb8e87). Windows x64, Intel Core Ultra 9 275HX, NVIDIA GeForce RTX 5090 Laptop GPU, installed Chrome 156 in headless mode. WebGPU reports a non-fallback NVIDIA Blackwell adapter. Normal requestAnimationFrame scheduling; no experimental WebGPU or software-rendering flags in these hardware runs. Each scenario runs for a full 60 seconds after warm-up, with all 100,000 boids active and a 32-candidate budget.
+
+| Scenario | World / GPU canvas | Mean completed FPS | Simulation Hz | p95 frame ms | p99 frame ms | Mean sampled GPU compute ms/tick | CPU submit ms/frame |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Default flock | 1024 / 1024 | 60.00 | 59.98 | 16.90 | 17.00 | 0.212 | 0.136 |
+| Six-octave wind, shoal, 16 orbiting predators | 512 / 512 | 60.00 | 59.97 | 16.90 | 17.00 | 0.285 | 0.146 |
+| Six-octave wind, shoal, 16 orbiting predators | 256 / 256 | 60.00 | 60.02 | 17.00 | 17.00 | 0.347 | 0.113 |
+
+A crossing predator launches before each heavy scenario and exits early in the sample. Tick counts can differ by one at measurement boundaries. GPU compute figures use asynchronously sampled timestamp queries across binning, wind and steering/integration; they exclude the draw pass. The reported mean averages the latest sample visible each frame. Browser timestamp precision is limited, so sub-millisecond values are approximate. CPU submit time measures command preparation/submission, not GPU completion. FPS counts completed GPU submissions; p95/p99 describe RAF intervals. The first report's renderResolution field incorrectly read the hidden CPU canvas (1022); the GPU test explicitly set the actual GPU canvas to 1024 before timing. This reporting field has been corrected.
+
+The GPU keeps two 3.2 MB boid storage buffers and draws directly from them. Spatial work is bounded: up to 128 rotating representatives per cell and 32 candidates per boid. This approximates dense neighbourhoods; it does not skip simulation of any boids. A maximum of two GPU frames can be in flight. The GPU path performs no normal per-frame boid readback.
+
+Validation reads all 100,000 records and checks finite wrapped positions, movement, speed, wind response and shoal boost/disable. It verifies that CPU boid ticks stop during GPU mode, all three world sizes, maximum-radius 2x2 bins, 56 simultaneous predators, saved mode/parameters, factory reset, unsupported-WebGPU fallback and desktop/mobile layout. Native and WASM simulation checks still pass (10,192 each). CPU browser regression checks pass. Software-adapter CI validates shaders and behavior separately from hardware performance.
+
+These measurements demonstrate 60 FPS on this machine. They do not establish performance on integrated GPUs, phones, Safari or every WebGPU implementation. Raw local hardware report: `artifacts/gpu-chrome-60s.json` (ignored build evidence).
+
+```powershell
+$env:BROWSER_CHANNEL = 'chrome'
+$env:BENCHMARK_SECONDS = '60'
+npm run test:gpu
+```
+
+Set BENCHMARK_SCENARIOS to gpu-baseline, gpu-wind-small or gpu-wind-tiny to select cases; TEST_URL can target the deployed page.
+
+---
+
 # Saved settings and reset validation
 
 For [73358b0](https://github.com/jkeywo/boids-test/commit/73358b0), the save/reload/reset checks pass in Chromium and Firefox. They cover all settings, map size before orbit-radius restoration, saved orbit count, pending-save flush on reload, factory reset, preservation of unrelated storage, malformed/future-version data and blocked local storage. The deployed page passes the same checks.

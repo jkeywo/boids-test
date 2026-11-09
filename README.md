@@ -80,7 +80,7 @@ For bounded cost with 10,000 boids, C++ samples a periodic 32 x 32 field at 15 H
 
 Other panels expose individual steering radii/weights, shoal trigger/rearm angles, boost duration/cooldown, speed/turn multipliers, orbit radius/period and crossing-predator speed. Changes apply live. Orbit radius is clamped to fit the active map, and shoal rearm angle stays below its trigger angle. Settings save automatically in this browser. Reloading starts a fresh flock with the saved sliders, functor toggles, simulation mode, map size and orbiting-predator count.
 
-`src/parameters.hpp` is the single parameter registry. It supplies names, groups, defaults, bounds and steps to both C++ validation and the automatically generated controls. A future functor can register its toggle/settings there and add its C++ contribution without hand-building another UI panel.
+`src/parameters.hpp` is the single parameter registry. It supplies names, groups, defaults, bounds and steps to both C++ validation and the automatically generated controls. A future functor can register its toggle/settings there and add its C++ and WGSL contributions without hand-building another UI panel.
 
 WASM exports `parameter_schema()`, `get_parameter(id)`, `set_parameter(id, value)` and `parameter_max(id)`. Resolve IDs by the stable names in the JSON schema. `set_world_size(width)` accepts 256, 512 or 1024 and resets interpolation after resizing. The JS debug/interop API also offers `boidsTest.settings()`, `boidsTest.setParameter(name, value)`, `boidsTest.worldSize`, `boidsTest.crossingCount` and `boidsTest.predatorCount`. Slider inputs are bounded and quantized; nonfinite updates are rejected.
 
