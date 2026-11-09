@@ -527,6 +527,9 @@ canvas[hidden] {
 }
 
 /* Main actions | simulation | independently scrolling functor settings. */
+.viewport {
+  margin-inline: auto;
+}
 .app {
   width: min(1680px, 100%);
 }
