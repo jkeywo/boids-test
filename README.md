@@ -78,6 +78,8 @@ The build packages CSS, JavaScript, WASM and both GPU shaders under `assets/<con
 
 GPU startup validates shader parameter references against the loaded WASM registry before compilation. An incompatible set produces an explicit reload message. Browser regression tests supply obsolete root assets and verify that CPU/GPU startup only requests the coherent release directory. Packaging tests check stable repackaging, portable line endings and release changes when WASM changes. Reload an already-open tab after a deployment to use the new release.
 
+Validation: [CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42661779087) pass for [acec2b5](https://github.com/jkeywo/boids-test/commit/acec2b5). The published release `64939f8a43fe9f16e4a73e2d` matches all locally tested asset bytes. Live CPU/GPU startup passes with incompatible cached root assets injected, and the explicit missing-`swarm-count` guard passes.
+
 ## GPU simulation
 
 `web/gpu.js` manages WebGPU resources; `gpu-sim.wgsl` implements initialization, spatial binning, independent cohesion/alignment/repulsion/flee, Perlin wind, shoal state, turn limiting and wrapped integration. Two storage buffers grow with capacity (32 bytes per boid per buffer; 32 MB each at one million). Existing current/previous records are copied during growth and only the new range is initialised on the GPU. `gpu-render.wgsl` reads these buffers directly and draws the selected boids and predators in one instanced call. No per-frame boid upload or readback is needed. C++/Flecs continues to own validated settings and predator paths while CPU boid integration is suspended.
