@@ -339,8 +339,19 @@ const server = http.createServer((req, res) => {
         c.height = c.width;
       });
       await page.waitForTimeout(1500);
-      await page.evaluate(() => boidsTest.startBenchmark());
+      const benchmarkStep = await page.evaluate(() => {
+        boidsTest.startBenchmark();
+        return boidsTest.gpuStats().steps;
+      });
       await page.waitForTimeout(seconds * 1000);
+      // A software adapter can take over one second per submission. Functional
+      // CI waits for real progress; hardware runs retain the exact timed window.
+      if (process.env.GPU_SOFTWARE === "1")
+        await page.waitForFunction(
+          (step) => boidsTest.gpuStats().steps > step,
+          benchmarkStep,
+          { timeout: 90000 },
+        );
       const metrics = await page.evaluate(() => boidsTest.stopBenchmark());
       results.push({ scenario: scenario.name, ...metrics });
       assert.equal(metrics.population, 100000);
