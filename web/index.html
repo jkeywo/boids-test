@@ -11,11 +11,6 @@
   <body>
     <main class="app">
       <aside class="main-controls" aria-label="Main controls">
-        <header>
-          <span class="eyebrow">COLLECTIVE MOTION / 01</span>
-          <h1>Boids<span class="dot">.</span></h1>
-          <p>Simple rules.<br />Emergent behaviour.</p>
-        </header>
         <section class="controls" aria-label="Simulation controls">
           <div class="mode-picker map-picker">
             <label for="simulation-mode">Simulation mode</label>
@@ -71,14 +66,6 @@
               ><small id="simulation-unit"> ms / tick</small></strong
             >
           </div>
-          <div class="legend">
-            <i></i>Boid <i class="boost"></i>Boost
-            <i class="predator"></i>Predator
-          </div>
-          <a href="https://github.com/jkeywo/boids-test"
-            ><span id="backend-caption">C++ · WASM · WebGL 2</span>
-            <span>↗</span></a
-          >
         </footer>
       </aside>
       <section class="viewport" aria-label="Boid simulation">
@@ -100,13 +87,8 @@
             Loading the flock<span class="loading">…</span>
           </div>
         </div>
-        <div class="caption">
-          <span id="world-caption">1024 × 1024 / TOROIDAL WORLD</span
-          ><span>COHESION · ALIGNMENT · REPULSION</span>
-        </div>
       </section>
-      <aside class="functor-settings" aria-labelledby="functor-title">
-        <h2 id="functor-title">Functor settings</h2>
+      <aside class="functor-settings" aria-label="Functor settings">
         <div
           id="parameter-controls"
           class="parameter-scroll"

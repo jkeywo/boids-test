@@ -355,6 +355,10 @@ const server = http.createServer((req, res) => {
       canvas = await page.locator("#gpu-simulation").boundingBox();
     assert(canvas.x + canvas.width <= sidebar.x);
     assert(Math.abs(canvas.width - canvas.height) < 1);
+    assert(
+      Math.abs(sidebar.height - 852) < 1 && Math.abs(sidebar.y) < 1,
+      "settings fill the mobile viewport",
+    );
     await page.screenshot({
       path: path.join(artifacts, "gpu-mobile-layout.png"),
       fullPage: true,

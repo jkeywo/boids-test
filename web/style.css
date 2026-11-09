@@ -9,7 +9,7 @@
 }
 body {
   margin: 0;
-  min-height: 100svh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -28,27 +28,7 @@ aside {
   flex-direction: column;
   padding: 10px 0 28px;
 }
-.eyebrow {
-  font-size: 9px;
-  letter-spacing: 1.6px;
-  color: #5c8c94;
-}
-h1 {
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 66px;
-  font-weight: 500;
-  letter-spacing: -5px;
-  margin: 16px 0 8px;
-}
-.dot {
-  color: #45d4db;
-}
-header p {
-  font-size: 14px;
-  line-height: 1.6;
-  color: #87969e;
-  margin: 0;
-}
+
 .controls {
   margin-top: 48px;
 }
@@ -146,36 +126,7 @@ footer {
   font-size: 10px;
   color: #7c929c;
 }
-.legend {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  color: #8b9da5;
-  margin: 25px 0 19px;
-}
-.legend i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #3bd4db;
-}
-.legend i:not(:first-child) {
-  margin-left: 6px;
-}
-.legend .boost {
-  background: #ffe075;
-}
-.legend .predator {
-  background: #ff4552;
-}
-footer a {
-  font-size: 10px;
-  color: #607b86;
-  text-decoration: none;
-  display: flex;
-  justify-content: space-between;
-}
+
 .viewport {
   min-width: 0;
   flex: 1;
@@ -209,18 +160,10 @@ canvas {
 #status[hidden] {
   display: none;
 }
-.caption {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 8px;
-  letter-spacing: 1.3px;
-  color: #617984;
-  padding: 15px 2px 0;
-}
+
 @media (min-width: 1000px) {
   .viewport {
-    max-width: min(1024px, calc(100svh - 110px));
+    max-width: min(1024px, calc(100dvh - 52px));
   }
 }
 @media (max-width: 750px) {
@@ -232,18 +175,7 @@ canvas {
     width: 130px;
     padding: 0;
   }
-  h1 {
-    font-size: 43px;
-    letter-spacing: -3px;
-    margin-top: 13px;
-  }
-  .eyebrow {
-    font-size: 7px;
-    letter-spacing: 0.8px;
-  }
-  header p {
-    font-size: 11px;
-  }
+
   .controls {
     margin-top: 25px;
   }
@@ -282,21 +214,7 @@ canvas {
   .metric small {
     font-size: 8px;
   }
-  .legend {
-    flex-wrap: wrap;
-    font-size: 8px;
-    gap: 4px;
-    margin: 18px 0 12px;
-  }
-  footer a {
-    font-size: 8px;
-  }
-  .caption {
-    font-size: 7px;
-    letter-spacing: 0.5px;
-    flex-wrap: wrap;
-    line-height: 1.6;
-  }
+
   .viewport {
     align-self: flex-start;
     margin-top: 3px;
@@ -307,8 +225,8 @@ canvas {
 }
 /* Parameter workspace: the controls scroll independently of the square view. */
 .app {
-  height: 100svh;
-  max-height: 1250px;
+  height: 100dvh;
+  max-height: none;
   padding: 26px 32px;
   gap: 28px;
 }
@@ -317,15 +235,7 @@ aside {
   min-height: 0;
   padding: 0;
 }
-h1 {
-  font-size: 48px;
-  letter-spacing: -3px;
-  margin: 8px 0;
-}
-header p {
-  font-size: 12px;
-  line-height: 1.4;
-}
+
 .controls {
   margin-top: 20px;
 }
@@ -404,9 +314,7 @@ footer {
   padding-top: 12px;
   margin-top: 0;
 }
-.legend {
-  margin: 16px 0 12px;
-}
+
 @media (max-width: 750px) {
   .app {
     padding: 14px 12px;
@@ -415,12 +323,7 @@ footer {
   aside {
     width: 146px;
   }
-  h1 {
-    font-size: 38px;
-  }
-  header p {
-    font-size: 10px;
-  }
+
   .controls {
     margin-top: 14px;
   }
@@ -452,9 +355,6 @@ footer {
   }
   footer {
     padding-top: 6px;
-  }
-  .legend {
-    margin: 12px 0 9px;
   }
 }
 .map-picker {
@@ -519,12 +419,6 @@ canvas[hidden] {
   grid-column: 2;
   width: 18px;
 }
-.legend i:first-child {
-  background: var(--boid-colour, #3bd4db);
-}
-.legend .boost {
-  background: var(--boost-colour, #ffe075);
-}
 
 /* Main actions | simulation | independently scrolling functor settings. */
 .viewport {
@@ -541,15 +435,15 @@ canvas[hidden] {
 }
 .functor-settings {
   width: 280px;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  margin-block: -26px;
+  padding-block: max(16px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-bottom));
 }
-.functor-settings h2 {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  color: #8fa2aa;
-  margin: 0 0 12px;
-}
+
 .functor-settings .parameter-scroll {
   margin-top: 0;
   min-height: 0;
@@ -572,7 +466,7 @@ canvas[hidden] {
     grid-template-areas: "simulation settings" "actions settings";
     grid-template-columns: minmax(0, 1fr) clamp(146px, 30vw, 240px);
     height: auto;
-    min-height: 100svh;
+    min-height: 100dvh;
     max-height: none;
     padding: 14px 12px;
     gap: 20px 14px;
@@ -593,15 +487,12 @@ canvas[hidden] {
   }
   .functor-settings {
     grid-area: settings;
-    width: 100%;
-    height: calc(100svh - 28px);
-    position: sticky;
-    top: 14px;
-    align-self: start;
-  }
-  .functor-settings h2 {
-    font-size: 9px;
-    letter-spacing: 0.8px;
+    position: fixed;
+    top: 0;
+    right: 12px;
+    width: clamp(146px, 30vw, 240px);
+    height: 100dvh;
+    margin-block: 0;
   }
 }
 
@@ -620,4 +511,11 @@ canvas[hidden] {
 .parameter-row select:focus-visible {
   outline: 2px solid #45d4db;
   outline-offset: 2px;
+}
+
+.main-controls .controls {
+  margin-top: 0;
+}
+.functor-settings .parameter-scroll {
+  overscroll-behavior-y: contain;
 }

@@ -505,6 +505,10 @@ const server = http.createServer((req, res) => {
       Math.abs(boxes[1].width - boxes[1].height) < 1,
       "square mobile canvas",
     );
+    assert(
+      Math.abs(boxes[0].height - 852) < 1 && Math.abs(boxes[0].y) < 1,
+      "settings fill the mobile viewport",
+    );
     console.log("Taking screenshot");
     await page.screenshot({
       path: path.join(artifact, "mobile-layout.png"),

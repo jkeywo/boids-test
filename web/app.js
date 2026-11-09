@@ -346,10 +346,6 @@ function refresh() {
   if (!modeLoading) modeSelect.value = activeMode;
   document.querySelector("#population-count").textContent =
     activeMode === "gpu" ? "100,000" : "10,000";
-  document.querySelector("#backend-caption").textContent =
-    activeMode === "gpu"
-      ? "WebGPU \u00b7 WGSL"
-      : "C++ \u00b7 WASM \u00b7 WebGL 2";
   document.title =
     activeMode === "gpu" ? "Boids / 100,000 GPU" : "Boids / 10,000";
   document.querySelector("#simulation-label").textContent =
@@ -363,18 +359,7 @@ function refresh() {
       ? " ms / frame"
       : " ms / tick";
   mapSize.value = String(width);
-  document.querySelector("#world-caption").textContent =
-    `${width} x ${width} / TOROIDAL WORLD`;
   const colours = parameterValues();
-  const baseHue = colours["boid-hue"];
-  document.documentElement.style.setProperty(
-    "--boid-colour",
-    `hsl(${baseHue} 70% 55%)`,
-  );
-  document.documentElement.style.setProperty(
-    "--boost-colour",
-    `hsl(${baseHue + (colours["shoal-hue-enabled"] ? colours["shoal-hue-offset"] : 0)} 70% 55%)`,
-  );
   const orbitSpec = parameterDefinitions.find(
     (spec) => spec.name === "orbit-radius",
   );
