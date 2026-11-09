@@ -23,6 +23,10 @@ CPU maximum uses eight candidates; the 10,000 scenes retain 48. Warm-up is three
 
 Fixed-budget processing probes (360 measured ticks after 120 warm-up) show the correctness cost: CPU baseline 3.57 → 4.91 ms/frame and heavy wind/predator scene 5.29 → 6.33 ms/frame; GPU compute baseline 0.151 → 0.566 ms/tick and heavy scene 0.169 → 0.603 ms/tick at 100,000 boids. Grid preparation itself becomes cheaper through shared cumulative distributions; corrected sampling and smoother wind cost more. The revised stochastic trajectories also change scene structure, so these are processing observations rather than identical-input microbenchmarks. Raw measurements and reproduction notes: [benchmarks/wrapping-fix.json](benchmarks/wrapping-fix.json).
 
+Additional Chrome sampling at wind scale 16 / six octaves sustained 60.00 FPS and 60.00 simulation Hz at 10,000 CPU boids (10 seconds after three seconds warm-up, mean tick 6.65 ms, adaptive budget 24–32). Firefox CPU functional/layout checks also pass; the performance table above describes Chrome, not Firefox.
+
+[CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42659011253) pass for [6ab273e](https://github.com/jkeywo/boids-test/commit/6ab273e), including software-adapter WebGPU validation. Live Pages repeats all 6,144 dense steering probes, the sparse seam reference and all wind scale/map probes with zero errors. Live CPU/GPU population anchors, swaps and finite wrapped records also pass. HTML, CSS, loader, app, GPU host and both shaders match the tested files with text line endings normalized; published WASM matches byte-for-byte, SHA-256 `D566AA289A76A3264409614994DE427BBF3FA62A706E08E44C18D227C3C01402`.
+
 ---
 
 # Live populations, mode-aware predator controls and swarm forests
