@@ -84,7 +84,9 @@ namespace boids {
   X(PredatorNoiseTime, "predator-noise-time", "Predators",                     \
     "Random time scale", "/s", 0, 2, .01, .2, false)                           \
   X(PredatorHuntRadius, "predator-hunt-radius", "Predators", "Hunt radius",    \
-    "u", 16, 768, 4, 192, false)
+    "u", 16, 768, 4, 192, false)                                               \
+  X(SwarmEnabled, "swarm-enabled", "Swarm", "Enabled", "", 0, 1, 1, 0, true)   \
+  X(SwarmWeight, "swarm-weight", "Swarm", "Weight", "", 0, 5, .05, 1, false)
 enum Parameter {
 #define ENUM(id, ...) id,
   BOID_PARAMETERS(ENUM)

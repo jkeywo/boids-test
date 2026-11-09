@@ -9,6 +9,68 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <nav class="slot-rail" aria-label="Settings slots">
+      <button
+        class="slot-button"
+        data-slot="0"
+        aria-label="Settings slot 1"
+        aria-pressed="true"
+        style="--slot-colour: #1f667a"
+        disabled
+      >
+        1
+      </button>
+      <button
+        class="slot-button"
+        data-slot="1"
+        aria-label="Settings slot 2"
+        aria-pressed="false"
+        style="--slot-colour: #2b6c4e"
+        disabled
+      >
+        2
+      </button>
+      <button
+        class="slot-button"
+        data-slot="2"
+        aria-label="Settings slot 3"
+        aria-pressed="false"
+        style="--slot-colour: #80651f"
+        disabled
+      >
+        3
+      </button>
+      <button
+        class="slot-button"
+        data-slot="3"
+        aria-label="Settings slot 4"
+        aria-pressed="false"
+        style="--slot-colour: #8f482c"
+        disabled
+      >
+        4
+      </button>
+      <button
+        class="slot-button"
+        data-slot="4"
+        aria-label="Settings slot 5"
+        aria-pressed="false"
+        style="--slot-colour: #873d67"
+        disabled
+      >
+        5
+      </button>
+      <button
+        class="slot-button"
+        data-slot="5"
+        aria-label="Settings slot 6"
+        aria-pressed="false"
+        style="--slot-colour: #594b91"
+        disabled
+      >
+        6
+      </button>
+    </nav>
     <main class="app">
       <aside class="main-controls" aria-label="Main controls">
         <section class="controls" aria-label="Simulation controls">
@@ -46,7 +108,13 @@
               <option value="256">256 x 256</option>
             </select>
           </div>
-          <button id="reset-defaults" disabled>Reset to defaults</button>
+          <button
+            id="reset-defaults"
+            title="Reset the current slot to defaults"
+            disabled
+          >
+            Reset to defaults
+          </button>
           <p id="settings-status" class="hint">
             Changes save automatically in this browser.
           </p>

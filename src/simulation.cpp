@@ -315,13 +315,19 @@ void Simulation::tick(float dt) {
       }
     }
   }
+  const bool swarm = parameters[SwarmEnabled] && parameters[SwarmWeight] > 0;
   if (perceptionRadius > 0)
     buildGrid();
+  else if (swarm)
+    query.each([&](const Boid &b) { snapshot[b.index] = b; });
   query.each([&](Boid &b) {
     Neighbours n = neighbours(perceptionRadius > 0 ? snapshot[b.index] : b);
     Vec desired = Cohesion{}(n)*parameters[CohesionWeight] +
                   Alignment{}(n)*parameters[AlignmentWeight] +
                   Repulsion{}(n)*parameters[RepulsionWeight];
+    if (swarm)
+      desired += Swarm{}(snapshot[b.index], snapshot, extent) *
+                 parameters[SwarmWeight];
     if (parameters[FleeEnabled] && parameters[FleeWeight] > 0)
       desired += Flee{}(b.position,
                         predatorCells[int(b.position.x / (extent / 8)) +

@@ -304,7 +304,55 @@ void predatorMovementTests() {
   external.setWorldSize(256);
   check(external.huntDensityTotal() == 0, "resizing invalidates density");
 }
+void swarmTests() {
+  std::vector<Boid> flock(7);
+  for (int i = 0; i < 7; i++) {
+    flock[i].index = i;
+    flock[i].position = {float(100 + i * 30), float(100 + i * 10)};
+  }
+  check(length2(Swarm{}(flock[0], flock, 1024)) == 0,
+        "swarm root has no parent");
+  for (int i = 1; i < 7; i++) {
+    const Vec expected =
+        unit(delta(flock[i].position, flock[(i - 1) >> 1].position, 1024));
+    const Vec actual = Swarm{}(flock[i], flock, 1024);
+    check(near(actual.x, expected.x, .00001f) &&
+              near(actual.y, expected.y, .00001f),
+          "swarm follows binary-tree parent");
+  }
+  flock[0].position = {1020, 500};
+  flock[1].position = {4, 500};
+  check(Swarm{}(flock[1], flock, 1024).x < -.99f,
+        "swarm follows parent across wrap seam");
+  Simulation sim(4);
+  for (auto id : {CohesionEnabled, AlignmentEnabled, RepulsionEnabled,
+                  FleeEnabled, WindEnabled})
+    sim.setParameter(id, 0);
+  sim.setParameter(SwarmEnabled, 1);
+  sim.setParameter(TurnRate, 720);
+  sim.setParameter(Speed, 10);
+  sim.setBoid(0, {100, 100}, 0);
+  sim.setBoid(1, {100, 150}, 0);
+  sim.setBoid(2, {150, 100}, pi / 2);
+  sim.setBoid(3, {150, 150}, 0);
+  sim.tick(1.f);
+  const auto &state = sim.state();
+  check(near(state[0].heading, 0, .00001f),
+        "swarm leaves root heading unchanged");
+  check(near(state[1].heading, -pi / 2, .00001f),
+        "swarm works with all neighbour rules disabled");
+  check(near(std::abs(state[2].heading), pi, .00001f),
+        "boid 2 follows 0 rather than 1");
+  check(near(std::abs(state[3].heading), pi, .00001f),
+        "swarm reads parent from pre-tick snapshot");
+  sim.setParameter(SwarmEnabled, 0);
+  const float before = sim.state()[1].heading;
+  sim.tick(.1f);
+  check(near(sim.state()[1].heading, before, .00001f),
+        "swarm toggle removes steering");
+}
 int main() {
+  swarmTests();
   predatorMovementTests();
   check(near(wrap(-1), 1023) && near(wrap(1024), 0) && near(wrap(2050), 2),
         "position wrapping");

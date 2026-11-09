@@ -326,6 +326,11 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
     }
   }
   var desired = unit(offset)*p(P_COHESION_WEIGHT)+unit(velocity)*p(P_ALIGNMENT_WEIGHT)+unit(separation)*p(P_REPULSION_WEIGHT);
+  // Binary-tree links: 1/2 follow 0, 3/4 follow 1. Root 0 has no parent.
+  if (id > 0u && p(P_SWARM_ENABLED)>0.0 && p(P_SWARM_WEIGHT)>0.0) {
+    let parent = (id - 1u) >> 1u;
+    desired += unit(difference(b.position, stateIn.values[parent].position))*p(P_SWARM_WEIGHT);
+  }
   if (p(P_FLEE_ENABLED)>0.0&&p(P_FLEE_WEIGHT)>0.0) {
     let radius = p(P_FLEE_RADIUS);
     for (var i = 0u;i<cfg.counts.w;i++) {

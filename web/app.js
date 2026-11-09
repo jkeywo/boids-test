@@ -100,6 +100,14 @@ const resetButton = document.querySelector("#reset-defaults");
 const settingsStatus = document.querySelector("#settings-status");
 const SETTINGS_KEY = "boids-test.settings.v1";
 let factorySettings;
+let activeSlot = 0;
+let settingsSlots = [];
+const slotButtons = [...document.querySelectorAll(".slot-button")];
+slotButtons.forEach((button) =>
+  button.addEventListener("click", () =>
+    selectSettingsSlot(Number(button.dataset.slot)),
+  ),
+);
 let saveTimer = null;
 let moduleInstance;
 let parameterDefinitions = [];
@@ -211,8 +219,6 @@ function parameterValues() {
 }
 function currentPreferences() {
   return {
-    version: 1,
-    mode: activeMode,
     worldSize: moduleInstance._statistic(7),
     orbitCount: moduleInstance._statistic(0),
     parameters: parameterValues(),
@@ -228,11 +234,22 @@ function cancelPendingSave() {
 }
 function saveSettings() {
   cancelPendingSave();
+  settingsSlots[activeSlot] = currentPreferences();
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(currentPreferences()));
-    settingsStatus.textContent = "Changes save automatically in this browser.";
+    localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({
+        version: 2,
+        mode: activeMode,
+        activeSlot,
+        slots: settingsSlots,
+      }),
+    );
+    settingsStatus.textContent = `Slot ${activeSlot + 1} saves automatically in this browser.`;
+    return true;
   } catch {
     storageUnavailable();
+    return false;
   }
 }
 function scheduleSettingsSave() {
@@ -245,7 +262,10 @@ function setOrbitCount(value) {
   while (moduleInstance._statistic(0) > target) moduleInstance._command(3);
 }
 function applyPreferences(saved) {
-  if ([256, 512, 1024].includes(saved.worldSize))
+  if (
+    [256, 512, 1024].includes(saved.worldSize) &&
+    saved.worldSize !== moduleInstance._statistic(7)
+  )
     moduleInstance._set_world_size(saved.worldSize);
   const values = saved.parameters;
   if (values && typeof values === "object" && !Array.isArray(values)) {
@@ -254,12 +274,52 @@ function applyPreferences(saved) {
       if (
         Object.hasOwn(values, spec.name) &&
         typeof values[spec.name] === "number" &&
-        Number.isFinite(values[spec.name])
+        Number.isFinite(values[spec.name]) &&
+        values[spec.name] !== moduleInstance._get_parameter(spec.id)
       )
         moduleInstance._set_parameter(spec.id, values[spec.name]);
     }
   }
   if (Number.isInteger(saved.orbitCount)) setOrbitCount(saved.orbitCount);
+}
+function normaliseSlot(saved) {
+  const slot = structuredClone(factorySettings);
+  if (!saved || typeof saved !== "object" || Array.isArray(saved)) return slot;
+  if ([256, 512, 1024].includes(saved.worldSize)) {
+    slot.worldSize = saved.worldSize;
+    slot.parameters["orbit-radius"] *=
+      saved.worldSize / factorySettings.worldSize;
+  }
+  if (Number.isInteger(saved.orbitCount))
+    slot.orbitCount = Math.max(0, Math.min(16, saved.orbitCount));
+  const values = saved.parameters;
+  if (values && typeof values === "object" && !Array.isArray(values))
+    for (const spec of parameterDefinitions)
+      if (
+        Object.hasOwn(values, spec.name) &&
+        typeof values[spec.name] === "number" &&
+        Number.isFinite(values[spec.name])
+      )
+        slot.parameters[spec.name] = values[spec.name];
+  return slot;
+}
+function selectSettingsSlot(index) {
+  if (
+    !initialized ||
+    !Number.isInteger(index) ||
+    index < 0 ||
+    index >= 6 ||
+    index === activeSlot
+  )
+    return;
+  cancelPendingSave();
+  settingsSlots[activeSlot] = currentPreferences();
+  const previousWorld = moduleInstance._statistic(7);
+  activeSlot = index;
+  applyPreferences(normaliseSlot(settingsSlots[index]));
+  refresh();
+  if (previousWorld !== moduleInstance._statistic(7)) resize();
+  saveSettings();
 }
 async function restoreSettings() {
   let raw;
@@ -272,16 +332,26 @@ async function restoreSettings() {
   if (raw === null) return;
   try {
     const saved = JSON.parse(raw);
-    if (
-      !saved ||
-      typeof saved !== "object" ||
-      Array.isArray(saved) ||
-      saved.version !== 1
-    )
-      return;
-    applyPreferences(saved);
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+    if (saved.version === 1) {
+      settingsSlots[0] = normaliseSlot(saved);
+    } else if (saved.version === 2 && Array.isArray(saved.slots)) {
+      settingsSlots = Array.from({ length: 6 }, (_, i) =>
+        normaliseSlot(saved.slots[i]),
+      );
+      activeSlot =
+        Number.isInteger(saved.activeSlot) &&
+        saved.activeSlot >= 0 &&
+        saved.activeSlot < 6
+          ? saved.activeSlot
+          : 0;
+    } else return;
+    applyPreferences(settingsSlots[activeSlot]);
+    settingsSlots[activeSlot] = currentPreferences();
     if (saved.mode === "gpu") await setSimulationMode("gpu");
-    settingsStatus.textContent = "Saved settings restored.";
+    // Migrate previous single-setting records into slot 1 without hiding storage failures.
+    if (saved.version === 1 && !saveSettings()) return;
+    settingsStatus.textContent = `Slot ${activeSlot + 1} restored.`;
   } catch {
     settingsStatus.textContent =
       "Saved settings could not be read; using defaults.";
@@ -289,17 +359,13 @@ async function restoreSettings() {
 }
 function resetDefaults() {
   cancelPendingSave();
-  setSimulationMode("cpu");
+  const previousWorld = moduleInstance._statistic(7);
   moduleInstance._command(5);
   applyPreferences(factorySettings);
   refresh();
-  resize();
-  try {
-    localStorage.removeItem(SETTINGS_KEY);
-    settingsStatus.textContent = "Default settings restored.";
-  } catch {
-    storageUnavailable();
-  }
+  if (previousWorld !== moduleInstance._statistic(7)) resize();
+  saveSettings();
+  // Keep every other slot, the selected backend, and the running boid state.
 }
 resetButton.addEventListener("click", resetDefaults);
 window.addEventListener("pagehide", () => {
@@ -329,6 +395,11 @@ function resize() {
 }
 new ResizeObserver(resize).observe(canvasWrap);
 function refresh() {
+  slotButtons.forEach((button, index) => {
+    button.disabled = !initialized;
+    button.setAttribute("aria-pressed", String(index === activeSlot));
+    button.title = `Settings slot ${index + 1}${index === activeSlot ? " (active)" : ""}`;
+  });
   const m = moduleInstance,
     count = m._statistic(0),
     width = m._statistic(7);
@@ -400,6 +471,9 @@ window.boidsTest = {
   ready: false,
   get mode() {
     return activeMode;
+  },
+  get activeSlot() {
+    return activeSlot + 1;
   },
   get population() {
     return activeMode === "gpu" ? 100000 : 10000;
@@ -512,6 +586,9 @@ window.boidsTest = {
       );
     buildParameterControls();
     factorySettings = currentPreferences();
+    settingsSlots = Array.from({ length: 6 }, () =>
+      structuredClone(factorySettings),
+    );
     await restoreSettings();
     initialized = true;
     if (!navigator.gpu)

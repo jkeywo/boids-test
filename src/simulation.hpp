@@ -82,6 +82,17 @@ struct Alignment {
 struct Repulsion {
   Vec operator()(const Neighbours &n) const { return unit(n.separation); }
 };
+struct Swarm {
+  Vec operator()(const Boid &b, const std::vector<Boid> &flock,
+                 float extent) const {
+    if (b.index <= 0)
+      return {};
+    const size_t parent = size_t((b.index - 1) >> 1);
+    return parent < flock.size()
+               ? unit(delta(b.position, flock[parent].position, extent))
+               : Vec{};
+  }
+};
 struct Flee {
   Vec operator()(Vec p, const std::vector<Predator> &predators,
                  float radius = 100, float extent = size) const {

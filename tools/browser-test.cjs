@@ -88,6 +88,7 @@ const server = http.createServer((req, res) => {
     console.log("Simulation ready");
     await require("./colour-check.cjs")(page, "#simulation");
     await require("./predator-check.cjs")(page);
+    await require("./slot-check.cjs")(page);
     const storageKey = "boids-test.settings.v1";
     const ready = () =>
       page.waitForFunction(() => window.boidsTest?.ready, null, {
@@ -160,11 +161,13 @@ const server = http.createServer((req, res) => {
       (key) => JSON.parse(localStorage.getItem(key)),
       storageKey,
     );
-    assert.equal(saved.version, 1);
-    assert.equal(saved.worldSize, 256);
-    assert.equal(saved.orbitCount, 2);
-    assert.equal(saved.parameters.speed, 111);
-    assert.equal("crossings" in saved, false);
+    assert.equal(saved.version, 2);
+    assert.equal(saved.activeSlot, 0);
+    assert.equal(saved.slots.length, 6);
+    assert.equal(saved.slots[0].worldSize, 256);
+    assert.equal(saved.slots[0].orbitCount, 2);
+    assert.equal(saved.slots[0].parameters.speed, 111);
+    assert.equal("crossings" in saved.slots[0], false);
     await page.evaluate(() =>
       localStorage.setItem("other-app.settings", "leave-me-alone"),
     );
@@ -172,8 +175,11 @@ const server = http.createServer((req, res) => {
     await page.click("#reset-defaults");
     await assertDefaults();
     assert.equal(
-      await page.evaluate((key) => localStorage.getItem(key), storageKey),
-      null,
+      await page.evaluate(
+        (key) => JSON.parse(localStorage.getItem(key)).slots.length,
+        storageKey,
+      ),
+      6,
     );
     assert.equal(
       await page.evaluate(() => localStorage.getItem("other-app.settings")),
@@ -226,6 +232,14 @@ const server = http.createServer((req, res) => {
     assert.equal(clamped["cohesion-weight"], 0);
     assert.equal(clamped["wind-octaves"], 6);
     assert.equal(clamped["shoal-rearm"], 9);
+    const migrated = await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)),
+      storageKey,
+    );
+    assert.equal(migrated.version, 2);
+    assert.equal(migrated.slots.length, 6);
+    assert.equal(migrated.activeSlot, 0);
+    assert.equal(migrated.slots[0].parameters["wind-octaves"], 6);
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 1024);
     await page.click("#reset-defaults");
     await assertDefaults();
@@ -253,6 +267,18 @@ const server = http.createServer((req, res) => {
     assert.match(
       await restricted.locator("#settings-status").textContent(),
       /unavailable/,
+    );
+    await restricted.locator('[data-slot="1"]').click();
+    await restricted.evaluate(() => boidsTest.setParameter("speed", 77));
+    await restricted.locator('[data-slot="0"]').click();
+    assert.equal(
+      await restricted.evaluate(() => boidsTest.settings().speed),
+      99,
+    );
+    await restricted.locator('[data-slot="1"]').click();
+    assert.equal(
+      await restricted.evaluate(() => boidsTest.settings().speed),
+      77,
     );
     await restricted.click("#reset-defaults");
     assert.equal(
@@ -353,8 +379,8 @@ const server = http.createServer((req, res) => {
       document.querySelector("#parameter-controls").scrollTop = 0;
       return { sliders, toggles };
     });
-    assert.equal(controlReport.sliders, 34);
-    assert.equal(controlReport.toggles, 8);
+    assert.equal(controlReport.sliders, 35);
+    assert.equal(controlReport.toggles, 9);
     await page.selectOption("#map-size", "512");
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 512);
     assert.equal(await page.locator("#map-size").inputValue(), "512");
@@ -509,6 +535,12 @@ const server = http.createServer((req, res) => {
       Math.abs(boxes[0].height - 852) < 1 && Math.abs(boxes[0].y) < 1,
       "settings fill the mobile viewport",
     );
+    const rail = await page.locator(".slot-rail").boundingBox();
+    assert(
+      Math.abs(rail.y) < 1 && Math.abs(rail.height - 852) < 1,
+      "slot rail fills mobile viewport",
+    );
+    assert(rail.x + rail.width <= boxes[1].x);
     console.log("Taking screenshot");
     await page.screenshot({
       path: path.join(artifact, "mobile-layout.png"),

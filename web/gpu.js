@@ -269,6 +269,7 @@ export class GPUBoids {
       });
     }
     const settings = this.bridge.settings();
+    this.world = this.bridge.worldSize();
     this.writeConfig(0, settings, 0, 0, 1);
     const encoder = d.createCommandEncoder();
     this.dispatch(encoder, "initialize", 0, Math.ceil(COUNT / 128));

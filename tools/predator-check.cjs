@@ -114,7 +114,7 @@ module.exports = async function checkPredatorModes(page) {
     await page.evaluate(() => boidsTest.settings()["predator-mode"]),
     0,
   );
-  if (gpu) {
+  if (gpu && (await page.evaluate(() => boidsTest.mode !== "gpu"))) {
     await page.selectOption("#simulation-mode", "gpu");
     await page.waitForFunction(() => boidsTest.mode === "gpu", null, {
       timeout: 90000,
