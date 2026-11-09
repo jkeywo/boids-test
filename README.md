@@ -93,7 +93,7 @@ Other panels expose individual steering radii/weights, shoal trigger/rearm angle
 
 `src/parameters.hpp` is the single parameter registry. It supplies names, groups, defaults, bounds and steps to both C++ validation and the automatically generated controls. A future functor can register its toggle/settings there and add its C++ and WGSL contributions without hand-building another UI panel.
 
-`boidsTest.activeSlot` reports the selected slot number (1-6). WASM exports `parameter_schema()`, `get_parameter(id)`, `set_parameter(id, value)` and `parameter_max(id)`. Resolve IDs by the stable names in the JSON schema. `set_world_size(width)` accepts 256, 512 or 1024 and resets interpolation after resizing. The JS debug/interop API also offers `boidsTest.settings()`, `boidsTest.setParameter(name, value)`, `boidsTest.worldSize`, `boidsTest.crossingCount` and `boidsTest.predatorCount`. Slider inputs are bounded and quantized; nonfinite updates are rejected.
+`boidsTest.activeSlot` reports the selected slot number (1-6). WASM exports `parameter_schema()`, `get_parameter(id)`, `set_parameter(id, value)` and `parameter_max(id)`. Resolve IDs by the stable names in the JSON schema. `set_world_size(width)` accepts 256, 512 or 1024 and resets interpolation after resizing. The JS debug/interop API also offers `boidsTest.settings()`, `boidsTest.setParameter(name, value)`, `boidsTest.worldSize`, `boidsTest.crossingCount` and `boidsTest.predatorCount`. `boidsTest.predators()` exposes each predator's identity and fixed speed multiplier. Slider inputs are bounded and quantized; nonfinite updates are rejected.
 
 ## Saved settings
 

@@ -1,3 +1,15 @@
+# Flock-only presets and fixed predator speed variation
+
+Release [221081b](https://github.com/jkeywo/boids-test/commit/221081b) separates flock presets from generic settings. The six presets store only boid motion, functors (including predator-flee response) and boid appearance. Map size, backend, resident count and all Predators-panel controls are global and autosaved. Switching or resetting a flock preset preserves live predators and their identities. Version 2 saves migrate generic values from the formerly active slot; version 1 saves migrate their scene-wide values. The version 3 record retains the existing storage key.
+
+Each actual predator birth gets an increasing identity and a deterministic hashed 0.8x-1.2x speed multiplier. The multiplier remains fixed for its lifetime and applies to crossing speed, roaming speed and orbit angular speed. Mode, map and preset changes never reroll it. Global base speeds/periods remain live controls. Reloading creates new predators, as before; individual predator state is not a saved setting.
+
+**11,586 native MSVC and Node/WASM checks pass.** Tests cover deterministic assignment independently of flock size, variation bounds, actual crossing/roaming/orbit movement, lifetime stability and non-reused identities. Chrome CPU/GPU and Firefox CPU suites pass flock-only serialization, global predator/map preservation, live identity/multiplier preservation, reset scope, and active-slot version 2 migration. [CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42614294796) pass. The same CPU/GPU suites pass on the published page. Its WASM matches the tested local build: SHA-256 `C147E43B0548C483757F4DCF7D80A9C83D9771761D15C055DC2FDCFFAAD2ECEC`.
+
+A full 60-second Chrome 156 hardware run on the documented RTX 5090 Laptop GPU setup sustained **60.00 FPS** with 100,000 boids, six-octave wind, shoal boosts and 16 Hunt predators using individual speed multipliers. Simulation rate: 60.02 Hz; p95/p99 RAF: 16.90/17.20 ms; mean sampled GPU compute: 0.229 ms/tick; CPU submission: 0.198 ms/frame. Map/backing size: 1024. One crossing exits early in the sample. Raw local report: `artifacts/global-settings-predator-speeds-60s.json`. These are hardware-specific measurements, not a universal device guarantee.
+
+---
+
 # Swarm and six live settings slots
 
 Release [3c88e38](https://github.com/jkeywo/boids-test/commit/3c88e38) adds the Swarm functor and six coloured autosaving slots. Swarm follows the binary-tree parent `(index - 1) >> 1` for indices above zero, with wrapped displacement and a pre-tick snapshot. Boid 0 has no Swarm parent. All six slot buttons fill a fixed left-hand viewport-height column on desktop and mobile; slot switches apply settings to the current flock and preserve crossing flights. CPU/GPU selection is global. Reset changes only the active slot and preserves the other five and the running backend. Version 1 single-setting records migrate to slot 1 in the new six-slot version 2 record.

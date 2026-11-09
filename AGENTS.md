@@ -11,3 +11,6 @@ Standalone project. Do not modify sibling repositories.
 - Site files use relative URLs to work beneath `/boids-test/` on GitHub Pages.
 - `artifacts/`, `build/` and `.tools/` are local output and must not be committed.
 - CI deploys successful main builds. Record actual hardware for performance claims.
+
+- Preset slots contain only boid motion, flock functors and boid appearance. Map/backend, predator count and all Predators-panel parameters are global generic settings.
+- Predator speed multipliers are deterministic per birth and fixed for each lifetime; never reroll them on ticks, preset changes or movement-mode changes.
