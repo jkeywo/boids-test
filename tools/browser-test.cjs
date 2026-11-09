@@ -94,24 +94,41 @@ const server = http.createServer((req, res) => {
     await page.waitForTimeout(1500);
     assert.equal(await page.locator("#status").isVisible(), false);
     assert.equal(await page.locator("#remove").isDisabled(), true);
-    console.log("Click shoal");
-    await page.click("#shoal");
+    assert.equal(await page.locator("#shoal").count(), 0);
     assert.equal(
-      await page.locator("#shoal").getAttribute("aria-pressed"),
-      "true",
+      await page.locator("#param-shoal-enabled").getAttribute("type"),
+      "checkbox",
     );
+    await page.locator("#param-shoal-enabled").check();
+    assert.equal(await page.locator("#param-shoal-enabled").isChecked(), true);
     await page.click("#add");
     await page.click("#add");
     assert.equal(await page.locator("#count").textContent(), "2");
     await page.click("#remove");
     assert.equal(await page.locator("#count").textContent(), "1");
-    await page.click("#send");
-    assert.equal(await page.locator("#send").isDisabled(), true);
-    await page.waitForFunction(
-      () => !document.querySelector("#send").disabled,
-      null,
-      { timeout: 15000 },
+    for (let i = 0; i < 3; ++i) {
+      await page.click("#send");
+      assert.equal(await page.locator("#send").isDisabled(), false);
+    }
+    assert.equal(await page.evaluate(() => window.boidsTest.crossingCount), 3);
+    // Exceed the old CPU bitmask and GPU instance-buffer capacities.
+    await page.evaluate(() => {
+      for (let i = 0; i < 40; ++i) document.querySelector("#send").click();
+    });
+    await page.waitForTimeout(200);
+    assert(await page.evaluate(() => window.boidsTest.crossingCount >= 40));
+    assert.equal(
+      await page.evaluate(() =>
+        document.querySelector("canvas").getContext("webgl2").getError(),
+      ),
+      0,
     );
+    await page.waitForFunction(
+      () => window.boidsTest.crossingCount === 0,
+      null,
+      { timeout: 30000 },
+    );
+    assert.equal(await page.locator("#send").isDisabled(), false);
     for (let i = 1; i < 16; ++i) await page.click("#add");
     assert.equal(await page.locator("#add").isDisabled(), true);
     assert.equal(await page.locator("#count").textContent(), "16");
@@ -154,13 +171,10 @@ const server = http.createServer((req, res) => {
       return { sliders, toggles };
     });
     assert.equal(controlReport.sliders, 27);
-    assert.equal(controlReport.toggles, 5); // Shoal has its existing separate quick toggle.
-    await page.click("#small-map");
+    assert.equal(controlReport.toggles, 6);
+    await page.selectOption("#map-size", "512");
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 512);
-    assert.equal(
-      await page.locator("#small-map").getAttribute("aria-pressed"),
-      "true",
-    );
+    assert.equal(await page.locator("#map-size").inputValue(), "512");
     assert.equal(
       Number(await page.locator("#param-orbit-radius").inputValue()),
       200,
@@ -176,7 +190,29 @@ const server = http.createServer((req, res) => {
       path: path.join(artifact, "wind-small.png"),
       fullPage: true,
     });
-    await page.click("#small-map");
+    await page.click("#send");
+    await page.selectOption("#map-size", "256");
+    assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 256);
+    assert.equal(await page.evaluate(() => window.boidsTest.crossingCount), 1);
+    assert.equal(
+      Number(await page.locator("#param-orbit-radius").inputValue()),
+      100,
+    );
+    assert.equal(
+      await page.locator("#param-orbit-radius").getAttribute("max"),
+      "112",
+    );
+    await page.waitForTimeout(150);
+    await page.screenshot({
+      path: path.join(artifact, "wind-tiny.png"),
+      fullPage: true,
+    });
+    await page.selectOption("#map-size", "512");
+    assert.equal(
+      Number(await page.locator("#param-orbit-radius").inputValue()),
+      200,
+    );
+    await page.selectOption("#map-size", "1024");
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 1024);
     assert.equal(
       Number(await page.locator("#param-orbit-radius").inputValue()),
@@ -186,6 +222,11 @@ const server = http.createServer((req, res) => {
     await page.evaluate(() => window.boidsTest.setParameter("wind-octaves", 3));
     await page.evaluate(
       () => (document.querySelector("#parameter-controls").scrollTop = 0),
+    );
+    await page.waitForFunction(
+      () => window.boidsTest.crossingCount === 0,
+      null,
+      { timeout: 30000 },
     );
     console.log(
       "PASS: all parameter controls, Perlin wind and live map resizing",
@@ -212,30 +253,34 @@ const server = http.createServer((req, res) => {
         small: true,
         octaves: 6,
       },
+      {
+        name: "wind-tiny",
+        shoal: true,
+        count: 16,
+        wind: true,
+        size: 256,
+        octaves: 6,
+        crossings: 8,
+      },
     ];
     const selected = process.env.BENCHMARK_SCENARIOS?.split(",");
     for (const scenario of scenarios.filter(
       (s) => !selected || selected.includes(s.name),
     )) {
-      const isSmall = await page.evaluate(
-        () => window.boidsTest.worldSize === 512,
-      );
-      if (isSmall !== !!scenario.small) await page.click("#small-map");
+      const targetSize = scenario.size || (scenario.small ? 512 : 1024);
+      if (
+        (await page.evaluate(() => window.boidsTest.worldSize)) !== targetSize
+      )
+        await page.selectOption("#map-size", String(targetSize));
       await page.locator("#param-wind-enabled").setChecked(!!scenario.wind);
       await page.evaluate(
         (octaves) => window.boidsTest.setParameter("wind-octaves", octaves),
         scenario.octaves || 3,
       );
-      if (
-        ((await page.locator("#shoal").getAttribute("aria-pressed")) ===
-          "true") !==
-        scenario.shoal
-      ) {
-        await page.click("#shoal");
-      }
+      await page.locator("#param-shoal-enabled").setChecked(scenario.shoal);
       assert.equal(
-        await page.locator("#shoal").getAttribute("aria-pressed"),
-        String(scenario.shoal),
+        await page.locator("#param-shoal-enabled").isChecked(),
+        scenario.shoal,
       );
       let count = Number(await page.locator("#count").textContent());
       while (count < scenario.count) {
@@ -246,7 +291,9 @@ const server = http.createServer((req, res) => {
         await page.click("#remove");
         count--;
       }
-      if (scenario.count) await page.click("#send");
+      if (scenario.count)
+        for (let i = 0; i < (scenario.crossings || 1); ++i)
+          await page.click("#send");
       await page.evaluate(() => {
         const canvas = document.querySelector("canvas");
         canvas.width = window.boidsTest.worldSize;

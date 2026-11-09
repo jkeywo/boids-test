@@ -8,7 +8,9 @@ float Simulation::random() {
 }
 Simulation::Simulation(int count)
     : query(world.query<Boid>()), snapshot(count), packed(count) {
-  predators.reserve(17);
+  predators.reserve(32);
+  for (auto &cell : predatorCells)
+    cell.reserve(16);
   for (int i = 0; i < count; ++i) {
     float a = random() * 2 * pi;
     world.entity().set<Boid>(
@@ -59,10 +61,11 @@ bool Simulation::setParameter(Parameter id, float value) {
   configureGrid();
   return true;
 }
-void Simulation::setSmallMap(bool small) {
-  float wanted = small ? 512.f : 1024.f;
+bool Simulation::setWorldSize(float wanted) {
+  if (wanted != 256 && wanted != 512 && wanted != 1024)
+    return false;
   if (wanted == extent)
-    return;
+    return true;
   float ratio = wanted / extent;
   extent = wanted;
   query.each([&](Boid &b) { b.position = b.position * ratio; });
@@ -72,6 +75,7 @@ void Simulation::setSmallMap(bool small) {
                  std::min(parameters[OrbitRadius] * ratio, extent / 2 - 16));
   windFrame = -1;
   configureGrid();
+  return true;
 }
 void Simulation::buildGrid() {
   counts.fill(0);
@@ -94,24 +98,28 @@ Neighbours Simulation::neighbours(const Boid &b) const {
   int buckets[9], samples[9];
   const int cx = int(b.position.x / cellWidth),
             cy = int(b.position.y / cellWidth);
+  // A 2x2 grid has only four unique cells, not nine wrapped neighbours.
+  const int bucketCount = gridSide == 2 ? 4 : 9;
   int total = 0;
-  for (int j = 0; j < 9; ++j) {
-    buckets[j] = ((cx + j % 3 - 1) & (gridSide - 1)) +
-                 gridSide * ((cy + j / 3 - 1) & (gridSide - 1));
+  for (int j = 0; j < bucketCount; ++j) {
+    buckets[j] = gridSide == 2
+                     ? j
+                     : ((cx + j % 3 - 1) & (gridSide - 1)) +
+                           gridSide * ((cy + j / 3 - 1) & (gridSide - 1));
     total += counts[buckets[j]];
   }
   float scale = total > candidateLimit ? float(candidateLimit) / total : 1.f;
   uint32_t hash =
       uint32_t(b.index) * 2654435761u + uint32_t(ticks / 8) * 2246822519u;
   int assigned = 0;
-  for (int j = 0; j < 9; ++j) {
+  for (int j = 0; j < bucketCount; ++j) {
     int count = counts[buckets[j]];
     samples[j] = total <= candidateLimit ? count : int(count * scale);
     assigned += samples[j];
   }
   int remaining = std::min(total, candidateLimit) - assigned;
-  for (int k = 0; k < 9 && remaining; ++k) {
-    int j = (k + b.index % 9) % 9;
+  for (int k = 0; k < bucketCount && remaining; ++k) {
+    int j = (k + b.index % bucketCount) % bucketCount;
     if (samples[j] < counts[buckets[j]]) {
       ++samples[j];
       --remaining;
@@ -123,7 +131,7 @@ Neighbours Simulation::neighbours(const Boid &b) const {
                   parameters[AlignmentRadius] * parameters[AlignmentRadius],
               repulsion2 =
                   parameters[RepulsionRadius] * parameters[RepulsionRadius];
-  for (int j = 0; j < 9; ++j) {
+  for (int j = 0; j < bucketCount; ++j) {
     int count = counts[buckets[j]], take = samples[j];
     if (!take)
       continue;
@@ -215,21 +223,24 @@ void Simulation::tick(float dt) {
                                           p.position.x > extent + 16;
                                  }),
                   predators.end());
-  predatorMasks.fill(0);
+  // Cell lists retain all active predators, including launches beyond 32.
+  for (auto &cell : predatorCells)
+    cell.clear();
   if (parameters[FleeEnabled] && parameters[FleeWeight] > 0) {
     int ring = int(std::ceil(parameters[FleeRadius] / (extent / 8)));
-    if (ring >= 4) {
-      uint32_t mask = (1u << predators.size()) - 1;
-      predatorMasks.fill(mask);
-    } else
-      for (unsigned i = 0; i < predators.size(); ++i) {
-        int cx = int(wrap(predators[i].position.x, extent) / (extent / 8)),
-            cy = int(wrap(predators[i].position.y, extent) / (extent / 8));
+    for (const auto &predator : predators) {
+      if (ring >= 4) {
+        for (auto &cell : predatorCells)
+          cell.push_back(predator);
+      } else {
+        int cx = int(wrap(predator.position.x, extent) / (extent / 8));
+        int cy = int(wrap(predator.position.y, extent) / (extent / 8));
         for (int dy = -ring; dy <= ring; ++dy)
           for (int dx = -ring; dx <= ring; ++dx)
-            predatorMasks[((cx + dx + 8) & 7) + 8 * ((cy + dy + 8) & 7)] |=
-                1u << i;
+            predatorCells[((cx + dx + 8) & 7) + 8 * ((cy + dy + 8) & 7)]
+                .push_back(predator);
       }
+    }
   }
   if (perceptionRadius > 0)
     buildGrid();
@@ -239,8 +250,8 @@ void Simulation::tick(float dt) {
                   Alignment{}(n)*parameters[AlignmentWeight] +
                   Repulsion{}(n)*parameters[RepulsionWeight];
     if (parameters[FleeEnabled] && parameters[FleeWeight] > 0)
-      desired += Flee{}(b.position, predators,
-                        predatorMasks[int(b.position.x / (extent / 8)) +
+      desired += Flee{}(b.position,
+                        predatorCells[int(b.position.x / (extent / 8)) +
                                       8 * int(b.position.y / (extent / 8))],
                         parameters[FleeRadius], extent) *
                  parameters[FleeWeight];
@@ -273,9 +284,11 @@ bool Simulation::crossingActive() const {
   return std::any_of(predators.begin(), predators.end(),
                      [](auto &p) { return p.crossing; });
 }
+int Simulation::crossingCount() const {
+  return int(std::count_if(predators.begin(), predators.end(),
+                           [](const auto &p) { return p.crossing; }));
+}
 bool Simulation::sendPredator() {
-  if (crossingActive())
-    return false;
   predators.push_back({{-16, extent * (.125f + random() * .75f)}, 0, 0, true});
   return true;
 }

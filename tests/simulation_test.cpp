@@ -167,6 +167,57 @@ void tuningTests() {
               std::isfinite(boid.heading),
           "small map and extreme wind remain finite");
 }
+
+void launchAndMapTests() {
+  Simulation flock(4);
+  flock.setBoid(0, {900, 700}, 0);
+  flock.addPredator();
+  check(flock.setWorldSize(256), "256 map accepted");
+  check(flock.worldSize() == 256 && flock.state().size() == 4,
+        "256 map preserves population");
+  check(near(flock.state()[0].position.x, 225) &&
+            near(flock.state()[0].position.y, 175),
+        "256 positions rescale");
+  check(near(flock.parameter(OrbitRadius), 100),
+        "256 orbit radius scales to 100");
+  check(near(std::sqrt(length2(flock.predators[0].position - Vec{128, 128})),
+             100),
+        "256 orbit uses new centre");
+  flock.setParameter(OrbitRadius, 496);
+  check(near(flock.parameter(OrbitRadius), 112),
+        "256 orbit bounded inside world");
+  check(!flock.setWorldSize(300) && flock.worldSize() == 256,
+        "unsupported map size rejected");
+  auto d = delta({1, 1}, {255, 255}, 256);
+  check(near(d.x, -2) && near(d.y, -2), "256 wraps both seams");
+  flock.setWorldSize(512);
+  check(near(flock.state()[0].position.x, 450), "256 to 512 position rescale");
+  flock.setWorldSize(1024);
+  check(near(flock.state()[0].position.x, 900), "256 to 1024 position rescale");
+  Simulation launches(1);
+  for (int i = 0; i < 16; ++i)
+    launches.addPredator();
+  for (int i = 0; i < 70; ++i)
+    check(launches.sendPredator(), "every repeated launch accepted");
+  check(launches.crossingCount() == 70 && launches.orbitCount() == 16,
+        "crossing and orbit populations independent");
+  launches.tick(1.f / 60);
+  check(launches.crossingCount() == 70,
+        "more than 32 predators survive simulation tick");
+  for (int i = 0; i < 400; ++i)
+    launches.tick(1.f / 60);
+  check(launches.crossingCount() == 0 && launches.orbitCount() == 16,
+        "crossing predators exit independently of orbits");
+  // Only a predator beyond the former bitmask capacity is close enough to flee.
+  Simulation distantIndex(1);
+  distantIndex.setBoid(0, {4, 512}, pi);
+  for (int i = 0; i < 69; ++i)
+    distantIndex.predators.push_back({{512, 512}, 0, 0, true});
+  distantIndex.predators.push_back({{1020, 512}, 0, 0, true});
+  distantIndex.tick(1.f / 60);
+  check(std::abs(distantIndex.state()[0].velocity.y) > 1,
+        "late-index predators contribute flee force");
+}
 int main() {
   check(near(wrap(-1), 1023) && near(wrap(1024), 0) && near(wrap(2050), 2),
         "position wrapping");
@@ -215,7 +266,8 @@ int main() {
   for (int i = 0; i < 20; ++i)
     sim.removePredator();
   check(sim.orbitCount() == 0, "predator lower bound");
-  check(sim.sendPredator() && !sim.sendPredator(), "one crossing predator");
+  check(sim.sendPredator() && sim.sendPredator() && sim.crossingCount() == 2,
+        "multiple crossing predators launch together");
   for (int i = 0; i < 400; ++i)
     sim.tick(1.f / 60);
   check(!sim.crossingActive(), "crossing predator exits");
@@ -247,14 +299,19 @@ int main() {
   Simulation dense(population);
   for (int i = 0; i < population; ++i)
     dense.setBoid(i, {512, 512}, 0);
+  dense.setWorldSize(256);
+  for (auto id : {CohesionRadius, AlignmentRadius, RepulsionRadius})
+    dense.setParameter(id, 128);
   dense.setShoal(true);
   dense.setNeighbourBudget(8);
   for (int i = 0; i < 10; ++i)
     dense.tick(1.f / 60);
   for (auto &boid : dense.state())
-    check(boid.position.x >= 0 && boid.position.x < 1024 &&
+    check(boid.position.x >= 0 && boid.position.x < 256 &&
+              boid.position.y >= 0 && boid.position.y < 256 &&
               std::isfinite(boid.position.y),
-          "dense cluster stable");
+          "dense 256 cluster stable at maximum interaction radius");
   tuningTests();
+  launchAndMapTests();
   std::printf("PASS: %d checks\n", checks);
 }

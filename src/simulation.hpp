@@ -82,15 +82,9 @@ struct Repulsion {
 };
 struct Flee {
   Vec operator()(Vec p, const std::vector<Predator> &predators,
-                 uint32_t candidates = ~0u, float radius = 100,
-                 float extent = size) const {
+                 float radius = 100, float extent = size) const {
     Vec force;
-    while (candidates) {
-      unsigned i = std::countr_zero(candidates);
-      candidates &= candidates - 1;
-      if (i >= predators.size())
-        break;
-      const auto &q = predators[i];
+    for (const auto &q : predators) {
       Vec d = delta(q.position, p, extent);
       float l = length2(d);
       if (l < radius * radius) {
@@ -172,7 +166,7 @@ class Simulation {
   std::vector<int> packed;
   std::array<int, cellCount + 1> offsets{};
   std::array<int, cellCount> counts{}, cursor{};
-  std::array<uint32_t, 64> predatorMasks{};
+  std::array<std::vector<Predator>, 64> predatorCells;
   std::array<Vec, cellCount> windPrevious{}, windNext{};
   Parameters parameters;
   uint32_t randomState = 0x12345678;
@@ -206,7 +200,8 @@ public:
     return id == OrbitRadius ? extent / 2 - 16 : parameterSpecs[id].maximum;
   }
   float worldSize() const { return extent; }
-  void setSmallMap(bool small);
+  bool setWorldSize(float wanted);
+  void setSmallMap(bool small) { setWorldSize(small ? 512.f : 1024.f); }
   Vec windAt(Vec position) const;
   void setShoal(bool enabled);
   void addPredator();
@@ -214,6 +209,7 @@ public:
   bool sendPredator();
   int orbitCount() const;
   bool crossingActive() const;
+  int crossingCount() const;
   const std::vector<Boid> &state();
   void setBoid(int index, Vec position, float heading);
 };

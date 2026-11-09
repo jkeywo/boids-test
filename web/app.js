@@ -2,11 +2,9 @@
 const status = document.querySelector("#status");
 const canvas = document.querySelector("canvas");
 const buttons = Object.fromEntries(
-  ["shoal", "send", "add", "remove", "small-map"].map((id) => [
-    id,
-    document.getElementById(id),
-  ]),
+  ["send", "add", "remove"].map((id) => [id, document.getElementById(id)]),
 );
+const mapSize = document.querySelector("#map-size");
 let moduleInstance;
 let parameterDefinitions = [];
 const parameterWidgets = new Map();
@@ -36,7 +34,6 @@ function buildParameterControls() {
       group = { details, summary };
       groups.set(spec.group, group);
     }
-    if (spec.name === "shoal-enabled") continue; // The existing quick toggle owns this parameter.
     const input = document.createElement("input");
     input.id = "param-" + spec.name;
     input.dataset.parameter = spec.name;
@@ -95,19 +92,16 @@ new ResizeObserver(resize).observe(canvas);
 function refresh() {
   const m = moduleInstance,
     count = m._statistic(0),
-    crossing = !!m._statistic(1),
-    shoal = !!m._statistic(2);
-  buttons.shoal.setAttribute("aria-pressed", String(shoal));
-  document.getElementById("shoal-state").textContent = shoal ? "ON" : "OFF";
+    width = m._statistic(7);
   document.getElementById("count").value = count;
-  buttons.send.disabled = crossing;
+  buttons.send.disabled = false;
   buttons.add.disabled = count >= 16;
   buttons.remove.disabled = count === 0;
-  const width = m._statistic(7),
-    small = width === 512;
-  buttons["small-map"].disabled = false;
-  buttons["small-map"].setAttribute("aria-pressed", String(small));
-  document.querySelector("#map-state").textContent = small ? "ON" : "OFF";
+  const crossing = m._statistic(8);
+  document.querySelector("#crossing-status").textContent =
+    `Each click launches another predator. ${crossing} active.`;
+  mapSize.disabled = false;
+  mapSize.value = String(width);
   document.querySelector("#world-caption").textContent =
     `${width} x ${width} / TOROIDAL WORLD`;
   const orbitSpec = parameterDefinitions.find(
@@ -128,23 +122,27 @@ function refresh() {
     }
   }
 }
-Object.entries({
-  shoal: 0,
-  send: 1,
-  add: 2,
-  remove: 3,
-  "small-map": 4,
-}).forEach(([id, action]) =>
+Object.entries({ send: 1, add: 2, remove: 3 }).forEach(([id, action]) =>
   buttons[id].addEventListener("click", () => {
     moduleInstance._command(action);
     refresh();
-    if (action === 4) resize();
   }),
 );
+mapSize.addEventListener("change", () => {
+  moduleInstance._set_world_size(Number(mapSize.value));
+  refresh();
+  resize();
+});
 window.boidsTest = {
   ready: false,
   get worldSize() {
     return moduleInstance._statistic(7);
+  },
+  get crossingCount() {
+    return moduleInstance._statistic(8);
+  },
+  get predatorCount() {
+    return moduleInstance._statistic(9);
   },
   settings() {
     return Object.fromEntries(
@@ -191,6 +189,8 @@ window.boidsTest = {
       userAgent: navigator.userAgent,
       population: 10000,
       worldSize: moduleInstance._statistic(7),
+      crossingPredators: this.crossingCount,
+      totalPredators: this.predatorCount,
       settings: this.settings(),
     };
   },
@@ -206,7 +206,6 @@ window.boidsTest = {
         "WebGL 2 is required. Enable hardware acceleration or use a compatible browser.",
       );
     buildParameterControls();
-    buttons.shoal.disabled = false;
     status.hidden = true;
     refresh();
     resize();

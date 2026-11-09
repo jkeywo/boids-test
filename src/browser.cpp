@@ -10,6 +10,7 @@ static std::vector<float> instances;
 static std::vector<Vec> previous;
 static GLuint program, vao, vbo;
 static GLint worldSizeUniform;
+static size_t instanceCapacity = (population + 32) * 6;
 static double accumulator = 0;
 static float simulationMs = 0;
 static NeighbourBudgetController quality;
@@ -75,7 +76,7 @@ void main(){outColor=vec4(color,1.);})";
   glEnableVertexAttribArray(0);
   glGenBuffers(1, &vbo);
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
-  glBufferData(GL_ARRAY_BUFFER, (population + 17) * 6 * sizeof(float), nullptr,
+  glBufferData(GL_ARRAY_BUFFER, instanceCapacity * sizeof(float), nullptr,
                GL_STREAM_DRAW);
   glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
   glEnableVertexAttribArray(1);
@@ -89,7 +90,7 @@ void main(){outColor=vec4(color,1.);})";
   auto &initial = sim->state();
   for (auto &b : initial)
     previous[b.index] = b.position;
-  instances.reserve((population + 17) * 6);
+  instances.reserve(instanceCapacity);
   return 1;
 }
 EMSCRIPTEN_KEEPALIVE void frame(double dt) {
@@ -138,6 +139,11 @@ EMSCRIPTEN_KEEPALIVE void frame(double dt) {
   glUniform1f(worldSizeUniform, sim->worldSize());
   glBindVertexArray(vao);
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  if (instances.size() > instanceCapacity) {
+    instanceCapacity = std::max(instanceCapacity * 2, instances.size());
+    glBufferData(GL_ARRAY_BUFFER, instanceCapacity * sizeof(float), nullptr,
+                 GL_STREAM_DRAW);
+  }
   glBufferSubData(GL_ARRAY_BUFFER, 0, instances.size() * sizeof(float),
                   instances.data());
   glDrawArraysInstanced(GL_TRIANGLES, 0, 3, GLsizei(instances.size() / 6));
@@ -184,9 +190,21 @@ EMSCRIPTEN_KEEPALIVE double statistic(int id) {
     return double(totalTicks);
   case 7:
     return sim->worldSize();
+  case 8:
+    return sim->crossingCount();
+  case 9:
+    return double(sim->predators.size());
   default:
     return population;
   }
+}
+EMSCRIPTEN_KEEPALIVE int set_world_size(int width) {
+  if (!sim || !sim->setWorldSize(float(width)))
+    return 0;
+  for (const auto &b : sim->state())
+    previous[b.index] = b.position;
+  accumulator = 0;
+  return int(sim->worldSize());
 }
 EMSCRIPTEN_KEEPALIVE const char *parameter_schema() {
   static const std::string schema = parameterSchema();

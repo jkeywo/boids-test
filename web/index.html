@@ -17,17 +17,12 @@
           <p>Simple rules.<br />Emergent behaviour.</p>
         </header>
         <section class="controls" aria-label="Simulation controls">
-          <button id="shoal" aria-pressed="false" disabled>
-            <span>Shoal boost</span
-            ><span id="shoal-state" class="tag">OFF</span>
-          </button>
-          <p class="hint">
-            Sharp turns unlock a brief burst of speed and agility.
-          </p>
           <button id="send" disabled>
             <span>Send predator</span><span aria-hidden="true">↗</span>
           </button>
-          <p class="hint">One pass through the flock.</p>
+          <p class="hint" id="crossing-status">
+            Each click launches another predator.
+          </p>
           <div class="orbit-label">ORBITING PREDATORS</div>
           <div class="stepper">
             <button id="remove" aria-label="Remove orbiting predator" disabled>
@@ -40,10 +35,14 @@
           <p class="hint" id="orbit-caption">
             Circling 400 units from the centre.
           </p>
-          <button id="small-map" aria-pressed="false" disabled>
-            <span>512 x 512 map</span
-            ><span class="tag" id="map-state">OFF</span>
-          </button>
+          <div class="map-picker">
+            <label for="map-size">Map size</label>
+            <select id="map-size" disabled>
+              <option value="1024">1024 x 1024</option>
+              <option value="512">512 x 512</option>
+              <option value="256">256 x 256</option>
+            </select>
+          </div>
         </section>
         <div
           id="parameter-controls"
