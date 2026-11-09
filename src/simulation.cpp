@@ -40,15 +40,18 @@ Neighbours Simulation::neighbours(const Boid &b) const {
   const int cx = int(b.position.x / 32), cy = int(b.position.y / 32);
   int total = 0;
   for (int j = 0; j < 9; ++j) {
-    buckets[j] = ((cx + j % 3 - 1 + cells) % cells) +
-                 cells * ((cy + j / 3 - 1 + cells) % cells);
+    buckets[j] = ((cx + j % 3 - 1) & (cells - 1)) +
+                 cells * ((cy + j / 3 - 1) & (cells - 1));
     total += counts[buckets[j]];
   }
+  const float scale =
+      total > candidateLimit ? float(candidateLimit) / total : 1.f;
+  const uint32_t hash =
+      uint32_t(b.index) * 2654435761u + uint32_t(ticks / 8) * 2246822519u;
   int assigned = 0;
   for (int j = 0; j < 9; ++j) {
     const int count = counts[buckets[j]];
-    samples[j] =
-        total <= candidateLimit ? count : count * candidateLimit / total;
+    samples[j] = total <= candidateLimit ? count : int(count * scale);
     assigned += samples[j];
   }
   // Allocate rounding leftovers without consistently favouring one direction.
@@ -65,10 +68,8 @@ Neighbours Simulation::neighbours(const Boid &b) const {
     if (!take)
       continue;
     const bool full = take == count;
-    const int start = full ? 0
-                           : int((uint32_t(b.index) * 2654435761u +
-                                  uint32_t(ticks / 8) * 2246822519u) %
-                                 count);
+    // Multiply-high maps the hash into a bucket without integer division.
+    const int start = full ? 0 : int((uint64_t(hash) * uint32_t(count)) >> 32);
     const float stride = float(count) / take;
     for (int k = 0; k < take; ++k) {
       int at = full ? k : start + int(k * stride);

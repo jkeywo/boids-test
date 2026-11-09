@@ -44,7 +44,13 @@ inline Vec unit(Vec v) {
   return q > 1e-12f ? v * (1 / std::sqrt(q)) : Vec{};
 }
 inline float angleDifference(float a, float b) {
-  return std::remainder(b - a, 2 * pi);
+  // Simulation headings are normalized; atan2 returns a normalized target.
+  float difference = b - a;
+  if (difference > pi)
+    difference -= 2 * pi;
+  if (difference < -pi)
+    difference += 2 * pi;
+  return difference;
 }
 struct Boid {
   Vec position, velocity;
