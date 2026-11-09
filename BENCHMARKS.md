@@ -8,6 +8,8 @@ Validation: native MSVC and Node/WASM each pass **12,239 checks**, including pre
 
 Installed Chrome CPU tests pass for desktop/mobile layout and controls. Thirty-second RAF samples hold approximately 60 FPS and 60 simulation Hz for baseline and 256-map/six-octave-wind/16-predator scenes; the normal adaptive CPU budget ranges 32-48 in the latter. Hardware: Windows x64, Intel Core Ultra 9 275HX, NVIDIA RTX 5090 Laptop GPU, Chrome 156 headless. Raw CPU report: `artifacts/ellipse-cpu-30s.json`. GPU Hunt and 256-map wind samples also pass at 59.98/59.99 completed FPS and 59.93 simulation Hz, with average compute costs 0.175/0.109 ms per tick. Raw GPU report: `artifacts/ellipse-gpu-30s.json`.
 
+Firefox CPU browser checks also pass. [CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42634237169) pass for [b7941a7](https://github.com/jkeywo/boids-test/commit/b7941a7), including the software-GPU reference test. Live Pages checks confirm the 0.5-second/50-unit side defaults, advancing CPU and GPU modes, and 100,000 finite GPU positions/velocities with wrapped positions and no browser/GPU errors. Published WASM SHA-256 matches the tested build: `7B2D76FA1AC82CFB5D371252EDCDC2C78B43128825E06DAEBAF7D812A23CF267`; loader, app, GPU host and both shaders also match (text compared with normalised line endings).
+
 ---
 
 # CPU and GPU optimisation pass — 9 November 2026
