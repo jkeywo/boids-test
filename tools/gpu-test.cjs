@@ -95,6 +95,7 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.evaluate(() => boidsTest.population), 100000);
     assert.equal(await page.locator("#simulation").isVisible(), false);
     assert.equal(await page.locator("#gpu-simulation").isVisible(), true);
+    await require("./colour-check.cjs")(page, "#gpu-simulation");
     // No CPU boid integration is allowed to masquerade as GPU simulation.
     const cpuTicks = await page.evaluate(() => boidsTest.cpuTicks);
     const step = await page.evaluate(() => boidsTest.gpuStats().steps);

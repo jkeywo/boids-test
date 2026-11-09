@@ -1,8 +1,6 @@
 // WebGPU boid state never crosses back to the CPU during normal simulation.
 const COUNT = 100000,
   STRIDE = 32,
-  CONFIG_BYTES = 208,
-  UNIFORM_STRIDE = 256,
   MAX_STEPS = 4;
 const aligned = (n, alignment = 256) => Math.ceil(n / alignment) * alignment;
 export class GPUBoids {
@@ -36,6 +34,9 @@ export class GPUBoids {
   constructor(canvas, definitions, bridge, adapter, device, timers) {
     this.canvas = canvas;
     this.definitions = definitions;
+    this.parameterVectors = Math.ceil(definitions.length / 4);
+    this.configBytes = 64 + this.parameterVectors * 16;
+    this.uniformStride = aligned(this.configBytes);
     this.bridge = bridge;
     this.device = device;
     this.timers = timers;
@@ -90,7 +91,7 @@ export class GPUBoids {
     });
     this.uniform = d.createBuffer({
       label: "Per-tick configuration",
-      size: UNIFORM_STRIDE * MAX_STEPS,
+      size: this.uniformStride * MAX_STEPS,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.states = [0, 1].map((i) =>
@@ -133,7 +134,7 @@ export class GPUBoids {
           buffer: {
             type: "uniform",
             hasDynamicOffset: true,
-            minBindingSize: CONFIG_BYTES,
+            minBindingSize: this.configBytes,
           },
         },
         ...[1, 2, 3, 4, 5, 6].map((binding) => ({
@@ -154,7 +155,7 @@ export class GPUBoids {
           buffer: {
             type: "uniform",
             hasDynamicOffset: true,
-            minBindingSize: CONFIG_BYTES,
+            minBindingSize: this.configBytes,
           },
         },
         ...[1, 2, 3].map((binding) => ({
@@ -180,13 +181,17 @@ export class GPUBoids {
         return response.text();
       }),
     );
+    const configureShader = (source) =>
+      source
+        .replace("// PARAMETER_CONSTANTS", constants)
+        .replaceAll("PARAMETER_VECTORS", String(this.parameterVectors));
     const compute = d.createShaderModule({
       label: "Spatial boids compute",
-      code: computeSource.replace("// PARAMETER_CONSTANTS", constants),
+      code: configureShader(computeSource),
     });
     const render = d.createShaderModule({
       label: "GPU boid renderer",
-      code: renderSource,
+      code: configureShader(renderSource),
     });
     for (const module of [compute, render]) {
       const info = await module.getCompilationInfo();
@@ -272,7 +277,7 @@ export class GPUBoids {
         entries: [
           {
             binding: 0,
-            resource: { buffer: this.uniform, size: CONFIG_BYTES },
+            resource: { buffer: this.uniform, size: this.configBytes },
           },
           { binding: 1, resource: { buffer: this.states[i] } },
           { binding: 2, resource: { buffer: this.states[1 - i] } },
@@ -292,7 +297,7 @@ export class GPUBoids {
         entries: [
           {
             binding: 0,
-            resource: { buffer: this.uniform, size: CONFIG_BYTES },
+            resource: { buffer: this.uniform, size: this.configBytes },
           },
           { binding: 1, resource: { buffer: this.states[i] } },
           { binding: 2, resource: { buffer: this.states[1 - i] } },
@@ -317,7 +322,7 @@ export class GPUBoids {
     old.destroy();
   }
   writeConfig(slot, settings, dt, alpha, ratio = 1) {
-    const buffer = new ArrayBuffer(CONFIG_BYTES),
+    const buffer = new ArrayBuffer(this.configBytes),
       f = new Float32Array(buffer),
       u = new Uint32Array(buffer);
     const world = this.bridge.worldSize();
@@ -333,7 +338,11 @@ export class GPUBoids {
     u.set([this.ticks, (this.ticks * 7919) % COUNT, 0, 0], 8);
     f[12] = ratio;
     for (const spec of this.definitions) f[16 + spec.id] = settings[spec.name];
-    this.device.queue.writeBuffer(this.uniform, slot * UNIFORM_STRIDE, buffer);
+    this.device.queue.writeBuffer(
+      this.uniform,
+      slot * this.uniformStride,
+      buffer,
+    );
     const data = new Float32Array(Math.max(4, predatorCount * 4));
     for (let i = 0; i < predatorCount; i++) {
       const p = this.bridge.predator(i);
@@ -352,7 +361,7 @@ export class GPUBoids {
     const pass = encoder.beginComputePass(descriptor);
     pass.setPipeline(this.pipelines[name]);
     pass.setBindGroup(0, this.computeGroups[this.current], [
-      slot * UNIFORM_STRIDE,
+      slot * this.uniformStride,
       slot * this.predatorStride,
     ]);
     pass.dispatchWorkgroups(groups);
@@ -461,12 +470,18 @@ export class GPUBoids {
       1 / 60,
       Math.min(1, this.accumulator * 60),
     );
+    const hue = settings["boid-hue"] / 60;
+    const channel = (shift) =>
+      0.065 *
+      (1 -
+        0.615 *
+          Math.max(0, Math.min(1, Math.abs(((hue + shift) % 6) - 3) - 1)));
     const pass = encoder.beginRenderPass({
       label: "100,000 boids",
       colorAttachments: [
         {
           view: this.context.getCurrentTexture().createView(),
-          clearValue: { r: 0.025, g: 0.048, b: 0.065, a: 1 },
+          clearValue: { r: channel(3), g: channel(1), b: channel(5), a: 1 },
           loadOp: "clear",
           storeOp: "store",
         },
@@ -474,7 +489,7 @@ export class GPUBoids {
     });
     pass.setPipeline(this.renderPipeline);
     pass.setBindGroup(0, this.renderGroups[this.current], [
-      renderSlot * UNIFORM_STRIDE,
+      renderSlot * this.uniformStride,
       renderSlot * this.predatorStride,
     ]);
     pass.draw(3, COUNT + this.bridge.predatorCount());

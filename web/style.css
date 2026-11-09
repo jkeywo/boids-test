@@ -510,3 +510,18 @@ canvas[hidden] {
   margin-top: 0;
   margin-bottom: 6px;
 }
+/* Appearance checkboxes have their own visible labels. */
+.parameter-row.toggle-row {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+.parameter-row.toggle-row input {
+  grid-column: 2;
+  width: 18px;
+}
+.legend i:first-child {
+  background: var(--boid-colour, #3bd4db);
+}
+.legend .boost {
+  background: var(--boost-colour, #ffe075);
+}

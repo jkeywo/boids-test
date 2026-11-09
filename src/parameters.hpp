@@ -64,7 +64,15 @@ namespace boids {
   X(OrbitPeriod, "orbit-period", "Predators", "Orbit period", "s", 2, 60, 1,   \
     20, false)                                                                 \
   X(CrossingSpeed, "crossing-speed", "Predators", "Crossing speed", "u/s", 20, \
-    400, 5, 180, false)
+    400, 5, 180, false)                                                        \
+  X(BoidHue, "boid-hue", "Appearance", "Boid hue", "deg", 0, 360, 1, 183,      \
+    false)                                                                     \
+  X(DirectionHue, "direction-hue", "Appearance", "Hue by direction", "", 0, 1, \
+    1, 0, true)                                                                \
+  X(ShoalHueEnabled, "shoal-hue-enabled", "Appearance", "Shoal hue offset",    \
+    "", 0, 1, 1, 1, true)                                                      \
+  X(ShoalHueOffset, "shoal-hue-offset", "Appearance", "Shoal offset", "deg",   \
+    -180, 180, 1, -132, false)
 enum Parameter {
 #define ENUM(id, ...) id,
   BOID_PARAMETERS(ENUM)

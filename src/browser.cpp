@@ -9,7 +9,7 @@ static std::unique_ptr<Simulation> sim;
 static std::vector<float> instances;
 static std::vector<Vec> previous;
 static GLuint program, vao, vbo;
-static GLint worldSizeUniform;
+static GLint worldSizeUniform, colourUniform;
 static size_t instanceCapacity = (population + 32) * 6;
 static double accumulator = 0;
 static float simulationMs = 0;
@@ -46,8 +46,23 @@ layout(location=0) in vec2 vertex;
 layout(location=1) in vec4 transform;
 layout(location=2) in vec2 flags;
 uniform float worldSize;
+uniform vec4 appearance; // base hue, direction colouring, boost offset enabled, boost offset
+vec3 hueColour(float degrees) {
+  float h = fract(degrees / 360.);
+  vec3 rgb = clamp(abs(fract(vec3(h) + vec3(0., 2./3., 1./3.)) * 6. - 3.) - 1., 0., 1.);
+  return .86 * mix(vec3(1.), rgb, .73);
+}
 out vec3 color;
-void main(){float s=flags.x>0.5?3.2:1.;vec2 v=vertex*s;vec2 p=transform.xy+vec2(v.x*transform.z-v.y*transform.w,v.x*transform.w+v.y*transform.z);gl_Position=vec4(p.x/worldSize*2.-1.,1.-p.y/worldSize*2.,0.,1.);color=flags.x>0.5?vec3(1.,.27,.32):mix(vec3(.23,.83,.86),vec3(1.,.88,.46),flags.y);})";
+void main() {
+  float s = flags.x > .5 ? 3.2 : 1.;
+  vec2 v = vertex * s;
+  vec2 p = transform.xy + vec2(v.x*transform.z-v.y*transform.w, v.x*transform.w+v.y*transform.z);
+  gl_Position = vec4(p.x/worldSize*2.-1., 1.-p.y/worldSize*2., 0., 1.);
+  float hue = appearance.x;
+  if (appearance.y > .5) hue += atan(transform.w, transform.z) * 57.2957795131;
+  if (flags.y > .5 && appearance.z > .5) hue += appearance.w;
+  color = flags.x > .5 ? vec3(1., .27, .32) : hueColour(hue);
+})";
   const char *fs = R"(#version 300 es
 precision mediump float;
 in vec3 color;out vec4 outColor;
@@ -59,6 +74,7 @@ void main(){outColor=vec4(color,1.);})";
   glAttachShader(program, frag);
   glLinkProgram(program);
   worldSizeUniform = glGetUniformLocation(program, "worldSize");
+  colourUniform = glGetUniformLocation(program, "appearance");
   glDeleteShader(vert);
   glDeleteShader(frag);
   GLint linked;
@@ -133,10 +149,21 @@ EMSCRIPTEN_KEEPALIVE void frame(double dt) {
   int w, h;
   emscripten_get_canvas_element_size("#simulation", &w, &h);
   glViewport(0, 0, w, h);
-  glClearColor(.025f, .048f, .065f, 1);
+  // A dark HSV shade of the base hue, independent of individual
+  // headings/boosts.
+  const float hue = sim->parameter(BoidHue) / 60.f;
+  auto channel = [hue](float shift) {
+    const float k = std::fmod(hue + shift, 6.f);
+    return .065f *
+           (1.f - .615f * std::clamp(std::abs(k - 3.f) - 1.f, 0.f, 1.f));
+  };
+  glClearColor(channel(3), channel(1), channel(5), 1);
   glClear(GL_COLOR_BUFFER_BIT);
   glUseProgram(program);
   glUniform1f(worldSizeUniform, sim->worldSize());
+  glUniform4f(colourUniform, sim->parameter(BoidHue),
+              sim->parameter(DirectionHue), sim->parameter(ShoalHueEnabled),
+              sim->parameter(ShoalHueOffset));
   glBindVertexArray(vao);
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
   if (instances.size() > instanceCapacity) {

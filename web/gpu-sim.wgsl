@@ -8,7 +8,7 @@ struct Config {
   // tick, insertion rotation, reserved, reserved
   scale: vec4<f32>,
   // map-rescale ratio
-  params: array<vec4<f32>, 9>,
+  params: array<vec4<f32>, PARAMETER_VECTORS>,
 }
 struct Boid {
   position: vec2<f32>,

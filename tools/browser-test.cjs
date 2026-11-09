@@ -86,6 +86,7 @@ const server = http.createServer((req, res) => {
       timeout: 60000,
     });
     console.log("Simulation ready");
+    await require("./colour-check.cjs")(page, "#simulation");
     const storageKey = "boids-test.settings.v1";
     const ready = () =>
       page.waitForFunction(() => window.boidsTest?.ready, null, {
@@ -113,6 +114,12 @@ const server = http.createServer((req, res) => {
     await page.evaluate(() =>
       window.boidsTest.setParameter("orbit-radius", 80),
     );
+    await page.evaluate(() => {
+      boidsTest.setParameter("boid-hue", 318);
+      boidsTest.setParameter("direction-hue", 1);
+      boidsTest.setParameter("shoal-hue-offset", -50);
+      boidsTest.setParameter("shoal-hue-enabled", 0);
+    });
     await page.click("#add");
     await page.click("#add");
     await page.click("#send");
@@ -131,6 +138,10 @@ const server = http.createServer((req, res) => {
       crossings: window.boidsTest.crossingCount,
     }));
     assert.equal(restored.world, 256);
+    assert.equal(restored.settings["boid-hue"], 318);
+    assert.equal(restored.settings["direction-hue"], 1);
+    assert.equal(restored.settings["shoal-hue-offset"], -50);
+    assert.equal(restored.settings["shoal-hue-enabled"], 0);
     assert.equal(restored.settings.speed, 111);
     assert.equal(restored.settings["orbit-radius"], 80);
     assert.equal(restored.settings["wind-enabled"], 1);
@@ -341,8 +352,8 @@ const server = http.createServer((req, res) => {
       document.querySelector("#parameter-controls").scrollTop = 0;
       return { sliders, toggles };
     });
-    assert.equal(controlReport.sliders, 27);
-    assert.equal(controlReport.toggles, 6);
+    assert.equal(controlReport.sliders, 29);
+    assert.equal(controlReport.toggles, 8);
     await page.selectOption("#map-size", "512");
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 512);
     assert.equal(await page.locator("#map-size").inputValue(), "512");

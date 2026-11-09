@@ -102,13 +102,14 @@ function buildParameterControls() {
       const details = document.createElement("details");
       details.className = "functor-panel";
       details.dataset.group = spec.group;
-      details.open = spec.group === "Wind";
+      details.open = spec.group === "Wind" || spec.group === "Appearance";
       const summary = document.createElement("summary");
       const title = document.createElement("span");
       title.textContent = spec.group;
       summary.append(title);
       details.append(summary);
-      container.append(details);
+      if (spec.group === "Appearance") container.prepend(details);
+      else container.append(details);
       group = { details, summary };
       groups.set(spec.group, group);
     }
@@ -118,9 +119,23 @@ function buildParameterControls() {
     input.dataset.parameter = spec.name;
     if (spec.toggle) {
       input.type = "checkbox";
-      input.setAttribute("aria-label", "Enable " + spec.group.toLowerCase());
+      input.setAttribute(
+        "aria-label",
+        spec.label === "Enabled"
+          ? "Enable " + spec.group.toLowerCase()
+          : spec.label,
+      );
       input.addEventListener("click", (event) => event.stopPropagation());
-      group.summary.append(input);
+      if (spec.label === "Enabled") group.summary.append(input);
+      else {
+        const row = document.createElement("div");
+        row.className = "parameter-row toggle-row";
+        const label = document.createElement("label");
+        label.htmlFor = input.id;
+        label.textContent = spec.label;
+        row.append(label, input);
+        group.details.append(row);
+      }
     } else {
       input.type = "range";
       input.min = spec.min;
@@ -315,6 +330,16 @@ function refresh() {
   mapSize.value = String(width);
   document.querySelector("#world-caption").textContent =
     `${width} x ${width} / TOROIDAL WORLD`;
+  const colours = parameterValues();
+  const baseHue = colours["boid-hue"];
+  document.documentElement.style.setProperty(
+    "--boid-colour",
+    `hsl(${baseHue} 70% 55%)`,
+  );
+  document.documentElement.style.setProperty(
+    "--boost-colour",
+    `hsl(${baseHue + (colours["shoal-hue-enabled"] ? colours["shoal-hue-offset"] : 0)} 70% 55%)`,
+  );
   const orbitSpec = parameterDefinitions.find(
     (spec) => spec.name === "orbit-radius",
   );
