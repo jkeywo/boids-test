@@ -105,6 +105,18 @@ const server = http.createServer((req, res) => {
     );
     assert.equal(await page.evaluate(() => boidsTest.cpuTicks), cpuTicks);
     // Inspect all 100,000 records, not just a rendered population label.
+    // A software adapter may take longer than an arbitrary 300/500 ms delay.
+    // Wait past every already-submitted tick plus two newly configured ticks.
+    const settle = async () => {
+      const submitted = await page.evaluate(
+        () => boidsTest.gpuStats().submittedSteps,
+      );
+      await page.waitForFunction(
+        (target) => boidsTest.gpuStats().steps >= target,
+        submitted + 2,
+        { timeout: 90000 },
+      );
+    };
     const inspect = () =>
       page.evaluate(async () => {
         const values = new Float32Array(await boidsTest.gpuSnapshot());
@@ -179,17 +191,17 @@ const server = http.createServer((req, res) => {
         boidsTest.setParameter(name + "-enabled", 0);
       boidsTest.setParameter("speed", 180);
     });
-    await page.waitForTimeout(500);
+    await settle();
     await inspect();
-    await page.waitForTimeout(500);
+    await settle();
     state = await inspect();
     assert.equal(state.invalid, 0);
     assert(state.moved > 99990, JSON.stringify(state));
     assert.equal(state.turned, 0);
-    assert(Math.abs(state.maxSpeed - 180) < 0.01);
+    assert(Math.abs(state.maxSpeed - 180) < 0.01, JSON.stringify(state));
     for (const world of [512, 256, 1024]) {
       await page.selectOption("#map-size", String(world));
-      await page.waitForTimeout(300);
+      await settle();
       state = await inspect();
       assert.equal(state.invalid, 0, `GPU rescale ${world}`);
       if (world === 256) {
@@ -200,7 +212,7 @@ const server = http.createServer((req, res) => {
             boidsTest.setParameter(name + "-radius", 128);
           }
         });
-        await page.waitForTimeout(500);
+        await settle();
         state = await inspect();
         assert.equal(state.invalid, 0, "dense 2x2 GPU grid");
         await page.evaluate(() => {
@@ -225,24 +237,24 @@ const server = http.createServer((req, res) => {
       boidsTest.setParameter("shoal-enabled", 1);
       boidsTest.setParameter("shoal-threshold", 5);
     });
-    await page.waitForTimeout(1000);
+    await settle();
     state = await inspect();
     assert.equal(state.invalid, 0);
     assert(state.turned > 1000, "GPU Perlin wind steers");
     assert(state.boosted > 0, "GPU shoal boosts");
     assert(state.maxSpeed > 200);
     await page.evaluate(() => boidsTest.setParameter("shoal-enabled", 0));
-    await page.waitForTimeout(300);
+    await settle();
     state = await inspect();
     assert.equal(state.boosted, 0);
-    assert(Math.abs(state.maxSpeed - 180) < 0.01);
+    assert(Math.abs(state.maxSpeed - 180) < 0.01, JSON.stringify(state));
     await page.evaluate(() => {
       boidsTest.setParameter("flee-enabled", 1);
       boidsTest.setParameter("crossing-speed", 20);
       for (let i = 0; i < 16; i++) document.querySelector("#add").click();
       for (let i = 0; i < 40; i++) document.querySelector("#send").click();
     });
-    await page.waitForTimeout(500);
+    await settle();
     assert.equal(await page.evaluate(() => boidsTest.predatorCount), 56);
     state = await inspect();
     assert.equal(state.invalid, 0);
@@ -320,7 +332,7 @@ const server = http.createServer((req, res) => {
         });
     }
     await page.setViewportSize({ width: 393, height: 852 });
-    await page.waitForTimeout(300);
+    await settle();
     const sidebar = await page.locator("aside").boundingBox(),
       canvas = await page.locator("#gpu-simulation").boundingBox();
     assert(sidebar.x + sidebar.width <= canvas.x);
