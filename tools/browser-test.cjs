@@ -86,6 +86,7 @@ const server = http.createServer((req, res) => {
       timeout: 60000,
     });
     console.log("Simulation ready");
+    await require("./release-check.cjs")(page, "cpu");
     await require("./population-check.cjs")(page, "cpu");
     await require("./map-scale-check.cjs")(page);
     await require("./colour-check.cjs")(page, "#simulation");

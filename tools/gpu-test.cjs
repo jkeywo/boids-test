@@ -85,6 +85,7 @@ const server = http.createServer((req, res) => {
       adapterAvailable,
       "GPU test requires a WebGPU adapter; use GPU_SOFTWARE=1 for CI",
     );
+    await require("./release-check.cjs")(page, "gpu");
     await require("./population-check.cjs")(page, "gpu");
     await require("./ellipse-check.cjs")(page);
     await require("./tiling-check.cjs")(page);

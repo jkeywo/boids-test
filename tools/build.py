@@ -5,6 +5,8 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
+from package_site import package_site
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Disable unused Flecs application/server addons, including their WASM exports.
@@ -41,6 +43,7 @@ def main():
     if args.profile:
         common += ['-DBOIDS_PROFILE']
     if args.test:
+        run([sys.executable, 'tools/package_site_test.py'])
         run(common + ['tests/simulation_test.cpp', '-sENVIRONMENT=node',
                       '-sEXIT_RUNTIME=1', '-sALLOW_MEMORY_GROWTH=1',
                       '-sSTACK_OVERFLOW_CHECK=2', '-o', out / 'simulation_test.js'])
@@ -56,6 +59,7 @@ def main():
                   '-sINITIAL_MEMORY=33554432', '-sFILESYSTEM=0', '-o', site / 'boids.js'])
     for file in (ROOT / 'web').iterdir():
         shutil.copy2(file, site / file.name)
+    package_site(site)
 
 
 if __name__ == '__main__':

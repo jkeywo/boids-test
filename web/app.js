@@ -1,4 +1,6 @@
 "use strict";
+// Capture while this classic script is executing, before asynchronous startup.
+const assetBase = new URL(".", document.currentScript.src);
 const status = document.querySelector("#status");
 const canvas = document.querySelector("canvas");
 const buttons = Object.fromEntries(
@@ -39,7 +41,7 @@ async function setSimulationMode(requested) {
   modeStatus.textContent = "Preparing GPU simulation...";
   try {
     if (!gpuEngine) {
-      const { GPUBoids } = await import("./gpu.js");
+      const { GPUBoids } = await import(new URL("gpu.js", assetBase).href);
       gpuEngine = await GPUBoids.create(gpuCanvas, parameterDefinitions, {
         settings: parameterValues,
         population: () => populationFor("gpu"),
@@ -752,7 +754,7 @@ window.boidsTest = {
 (async () => {
   try {
     moduleInstance = await createBoids({
-      locateFile: (path) => new URL(path, document.baseURI).href,
+      locateFile: (path) => new URL(path, assetBase).href,
       printErr: (message) => console.error(message),
     });
     if (!moduleInstance._initialize())

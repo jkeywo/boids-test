@@ -206,10 +206,24 @@ export class GPUBoids {
         return response.text();
       }),
     );
-    const configureShader = (source) =>
-      source
+    const available = new Set(
+      this.definitions.map(
+        (spec) => "P_" + spec.name.toUpperCase().replaceAll("-", "_"),
+      ),
+    );
+    const configureShader = (source) => {
+      const missing = [
+        ...new Set(source.match(/\bP_[A-Z0-9_]+\b/g) || []),
+      ].filter((name) => !available.has(name));
+      if (missing.length)
+        throw new Error(
+          "Simulation files are from different versions. Reload this page to update. Missing parameters: " +
+            missing.join(", "),
+        );
+      return source
         .replace("// PARAMETER_CONSTANTS", constants)
         .replaceAll("PARAMETER_VECTORS", String(this.parameterVectors));
+    };
     const compute = d.createShaderModule({
       label: "Spatial boids compute",
       code: configureShader(computeSource),

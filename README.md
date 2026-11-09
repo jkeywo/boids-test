@@ -72,6 +72,12 @@ Neighbour position/velocity records are packed together and sampled in four-wide
 
 The renderer extracts instances directly from Flecs and interpolates wrapped positions between ticks, streams one instance buffer and draws boids/predators in one instanced call. No per-boid DOM elements or JavaScript calls are involved. The CPU renderer uses one catch-up tick per frame when measured tick cost exceeds 16.7 ms, and up to four otherwise. Population changes select an initial neighbour budget by count, followed by the existing timing controller. WASM is single-threaded and needs no cross-origin isolation. The canvas backing buffer is capped at 1024². The fixed simulation caps catch-up at four ticks, discards excess accumulated lag and pauses in hidden tabs; a slow device may therefore lose simulated time rather than accumulate an unbounded backlog.
 
+## Release assets and browser caching
+
+The build packages CSS, JavaScript, WASM and both GPU shaders under `assets/<content hash>/`. The entry HTML references that release; WASM lookup, dynamic GPU imports and shader fetches resolve relative to the same directory. Changing any asset changes the release URL, so an older cached WASM registry cannot silently pair with a newer shader. Root asset copies remain available for diagnostics. `release.json` identifies the deployed directory.
+
+GPU startup validates shader parameter references against the loaded WASM registry before compilation. An incompatible set produces an explicit reload message. Browser regression tests supply obsolete root assets and verify that CPU/GPU startup only requests the coherent release directory. Packaging tests check stable repackaging, portable line endings and release changes when WASM changes. Reload an already-open tab after a deployment to use the new release.
+
 ## GPU simulation
 
 `web/gpu.js` manages WebGPU resources; `gpu-sim.wgsl` implements initialization, spatial binning, independent cohesion/alignment/repulsion/flee, Perlin wind, shoal state, turn limiting and wrapped integration. Two storage buffers grow with capacity (32 bytes per boid per buffer; 32 MB each at one million). Existing current/previous records are copied during growth and only the new range is initialised on the GPU. `gpu-render.wgsl` reads these buffers directly and draws the selected boids and predators in one instanced call. No per-frame boid upload or readback is needed. C++/Flecs continues to own validated settings and predator paths while CPU boid integration is suspended.
