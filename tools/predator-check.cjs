@@ -109,7 +109,21 @@ module.exports = async function checkPredatorModes(page) {
   const orbit = await page.evaluate(() => boidsTest.predators());
   for (const p of orbit)
     assert(Math.abs(Math.hypot(p.x - 128, p.y - 128) - 100) < 0.01);
+  const fixed = await page.evaluate(() =>
+    boidsTest.predators().map((p) => [p.identity, p.speedMultiplier]),
+  );
+  assert(fixed.every(([, speed]) => speed >= 0.8 && speed <= 1.20001));
   await page.click("#reset-defaults");
+  assert.deepEqual(
+    await page.evaluate(() =>
+      boidsTest.predators().map((p) => [p.identity, p.speedMultiplier]),
+    ),
+    fixed,
+  );
+  // Restore global test state explicitly; a flock-preset reset no longer touches it.
+  await page.click("#remove");
+  await page.click("#remove");
+  await page.selectOption("#map-size", "1024");
   assert.equal(
     await page.evaluate(() => boidsTest.settings()["predator-mode"]),
     0,

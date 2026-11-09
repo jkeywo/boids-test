@@ -64,6 +64,8 @@ struct Predator {
   bool crossing = false;
   Vec destination;
   uint32_t noiseSeed = 0;
+  uint32_t identity = 0;
+  float speedMultiplier = 1;
 };
 struct Neighbours {
   Vec offset, velocity, separation;
@@ -183,7 +185,7 @@ class Simulation {
   std::array<Vec, cellCount> windPrevious{}, windNext{};
   Parameters parameters;
   std::array<uint32_t, cellCount> huntDensity{};
-  uint32_t randomState = 0x12345678;
+  uint32_t randomState = 0x12345678, predatorSerial = 0;
   uint64_t ticks = 0;
   int candidateLimit = candidateBudget;
   float extent = size, cellWidth = 32, perceptionRadius = 32;
@@ -191,6 +193,7 @@ class Simulation {
   double elapsed = 0, windFrame = -1;
   float windAlpha = 0;
   float random();
+  void assignPredatorIdentity(Predator &predator);
   int cell(Vec p) const {
     return int(p.x / cellWidth) + gridSide * int(p.y / cellWidth);
   }

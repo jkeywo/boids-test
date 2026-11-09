@@ -99,7 +99,7 @@ modeSelect.addEventListener("change", async () => {
 const resetButton = document.querySelector("#reset-defaults");
 const settingsStatus = document.querySelector("#settings-status");
 const SETTINGS_KEY = "boids-test.settings.v1";
-let factorySettings;
+let factorySettings, factoryGenericSettings;
 let activeSlot = 0;
 let settingsSlots = [];
 const slotButtons = [...document.querySelectorAll(".slot-button")];
@@ -217,11 +217,24 @@ function parameterValues() {
     ]),
   );
 }
+function isFlockParameter(spec) {
+  return spec.group !== "Predators";
+}
+function scopedParameters(flock) {
+  return Object.fromEntries(
+    parameterDefinitions
+      .filter((spec) => isFlockParameter(spec) === flock)
+      .map((spec) => [spec.name, moduleInstance._get_parameter(spec.id)]),
+  );
+}
 function currentPreferences() {
+  return { parameters: scopedParameters(true) };
+}
+function currentGenericPreferences() {
   return {
     worldSize: moduleInstance._statistic(7),
     orbitCount: moduleInstance._statistic(0),
-    parameters: parameterValues(),
+    parameters: scopedParameters(false),
   };
 }
 function storageUnavailable() {
@@ -239,7 +252,8 @@ function saveSettings() {
     localStorage.setItem(
       SETTINGS_KEY,
       JSON.stringify({
-        version: 2,
+        version: 3,
+        generic: currentGenericPreferences(),
         mode: activeMode,
         activeSlot,
         slots: settingsSlots,
@@ -282,25 +296,33 @@ function applyPreferences(saved) {
   }
   if (Number.isInteger(saved.orbitCount)) setOrbitCount(saved.orbitCount);
 }
-function normaliseSlot(saved) {
-  const slot = structuredClone(factorySettings);
+function normaliseSlot(saved, generic = false) {
+  const slot = structuredClone(
+    generic ? factoryGenericSettings : factorySettings,
+  );
   if (!saved || typeof saved !== "object" || Array.isArray(saved)) return slot;
-  if ([256, 512, 1024].includes(saved.worldSize)) {
-    slot.worldSize = saved.worldSize;
-    slot.parameters["orbit-radius"] *=
-      saved.worldSize / factorySettings.worldSize;
+  if (generic) {
+    if ([256, 512, 1024].includes(saved.worldSize)) {
+      slot.worldSize = saved.worldSize;
+      slot.parameters["orbit-radius"] *=
+        saved.worldSize / factoryGenericSettings.worldSize;
+    }
+    if (Number.isInteger(saved.orbitCount))
+      slot.orbitCount = Math.max(0, Math.min(16, saved.orbitCount));
   }
-  if (Number.isInteger(saved.orbitCount))
-    slot.orbitCount = Math.max(0, Math.min(16, saved.orbitCount));
   const values = saved.parameters;
   if (values && typeof values === "object" && !Array.isArray(values))
     for (const spec of parameterDefinitions)
       if (
+        isFlockParameter(spec) !== generic &&
         Object.hasOwn(values, spec.name) &&
         typeof values[spec.name] === "number" &&
         Number.isFinite(values[spec.name])
       )
-        slot.parameters[spec.name] = values[spec.name];
+        slot.parameters[spec.name] = Math.max(
+          spec.min,
+          Math.min(spec.max, values[spec.name]),
+        );
   return slot;
 }
 function selectSettingsSlot(index) {
@@ -314,11 +336,9 @@ function selectSettingsSlot(index) {
     return;
   cancelPendingSave();
   settingsSlots[activeSlot] = currentPreferences();
-  const previousWorld = moduleInstance._statistic(7);
   activeSlot = index;
   applyPreferences(normaliseSlot(settingsSlots[index]));
   refresh();
-  if (previousWorld !== moduleInstance._statistic(7)) resize();
   saveSettings();
 }
 async function restoreSettings() {
@@ -333,24 +353,34 @@ async function restoreSettings() {
   try {
     const saved = JSON.parse(raw);
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+    let generic;
     if (saved.version === 1) {
       settingsSlots[0] = normaliseSlot(saved);
-    } else if (saved.version === 2 && Array.isArray(saved.slots)) {
-      settingsSlots = Array.from({ length: 6 }, (_, i) =>
-        normaliseSlot(saved.slots[i]),
-      );
+      generic = normaliseSlot(saved, true);
+    } else if (
+      (saved.version === 2 || saved.version === 3) &&
+      Array.isArray(saved.slots)
+    ) {
       activeSlot =
         Number.isInteger(saved.activeSlot) &&
         saved.activeSlot >= 0 &&
         saved.activeSlot < 6
           ? saved.activeSlot
           : 0;
+      settingsSlots = Array.from({ length: 6 }, (_, i) =>
+        normaliseSlot(saved.slots[i]),
+      );
+      // Version 2 stored generic settings in each slot. Keep the active scene's values.
+      generic = normaliseSlot(
+        saved.version === 2 ? saved.slots[activeSlot] : saved.generic,
+        true,
+      );
     } else return;
+    applyPreferences(generic);
     applyPreferences(settingsSlots[activeSlot]);
     settingsSlots[activeSlot] = currentPreferences();
     if (saved.mode === "gpu") await setSimulationMode("gpu");
-    // Migrate previous single-setting records into slot 1 without hiding storage failures.
-    if (saved.version === 1 && !saveSettings()) return;
+    if (saved.version !== 3 && !saveSettings()) return;
     settingsStatus.textContent = `Slot ${activeSlot + 1} restored.`;
   } catch {
     settingsStatus.textContent =
@@ -359,13 +389,9 @@ async function restoreSettings() {
 }
 function resetDefaults() {
   cancelPendingSave();
-  const previousWorld = moduleInstance._statistic(7);
-  moduleInstance._command(5);
   applyPreferences(factorySettings);
   refresh();
-  if (previousWorld !== moduleInstance._statistic(7)) resize();
   saveSettings();
-  // Keep every other slot, the selected backend, and the running boid state.
 }
 resetButton.addEventListener("click", resetDefaults);
 window.addEventListener("pagehide", () => {
@@ -505,6 +531,8 @@ window.boidsTest = {
       targetX: moduleInstance._predator_value(i, 3),
       targetY: moduleInstance._predator_value(i, 4),
       crossing: !!moduleInstance._predator_value(i, 5),
+      speedMultiplier: moduleInstance._predator_value(i, 6),
+      identity: moduleInstance._predator_value(i, 7),
     }));
   },
   get predatorCount() {
@@ -586,6 +614,7 @@ window.boidsTest = {
       );
     buildParameterControls();
     factorySettings = currentPreferences();
+    factoryGenericSettings = currentGenericPreferences();
     settingsSlots = Array.from({ length: 6 }, () =>
       structuredClone(factorySettings),
     );

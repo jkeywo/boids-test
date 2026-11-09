@@ -281,6 +281,10 @@ EMSCRIPTEN_KEEPALIVE double predator_value(int index, int field) {
     return p.destination.y;
   case 5:
     return p.crossing ? 1 : 0;
+  case 6:
+    return p.speedMultiplier;
+  case 7:
+    return p.identity;
   default:
     return 0;
   }

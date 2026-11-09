@@ -204,7 +204,7 @@ void launchAndMapTests() {
   launches.tick(1.f / 60);
   check(launches.crossingCount() == 70,
         "more than 32 predators survive simulation tick");
-  for (int i = 0; i < 600; ++i)
+  for (int i = 0; i < 900; ++i)
     launches.tick(1.f / 60);
   check(launches.crossingCount() == 0 && launches.orbitCount() == 16,
         "crossing predators exit independently of orbits");
@@ -304,6 +304,67 @@ void predatorMovementTests() {
   external.setWorldSize(256);
   check(external.huntDensityTotal() == 0, "resizing invalidates density");
 }
+void predatorSpeedTests() {
+  Simulation a(0), b(7);
+  for (int i = 0; i < 8; i++) {
+    if (i % 2) {
+      a.sendPredator();
+      b.sendPredator();
+    } else {
+      a.addPredator();
+      b.addPredator();
+    }
+  }
+  float lowest = 2, highest = 0;
+  for (size_t i = 0; i < a.predators.size(); i++) {
+    const auto &p = a.predators[i];
+    check(p.identity == i + 1, "predator birth identities increase");
+    check(p.speedMultiplier >= .8f && p.speedMultiplier <= 1.2f,
+          "predator speed variation is bounded");
+    check(p.speedMultiplier == b.predators[i].speedMultiplier,
+          "predator speed is deterministic independently of flock state");
+    lowest = std::min(lowest, p.speedMultiplier);
+    highest = std::max(highest, p.speedMultiplier);
+  }
+  check(highest - lowest > .1f, "predators have varied speeds");
+  auto &flight = a.predators[1];
+  const float multiplier = flight.speedMultiplier;
+  Vec before = flight.position;
+  a.advanceEnvironment(.1f, false);
+  check(near(std::sqrt(length2(flight.position - before)),
+             a.parameter(CrossingSpeed) * multiplier * .1f),
+        "crossing speed uses fixed multiplier");
+  before = flight.position;
+  a.advanceEnvironment(.1f, false);
+  check(flight.speedMultiplier == multiplier &&
+            near(std::sqrt(length2(flight.position - before)),
+                 a.parameter(CrossingSpeed) * multiplier * .1f),
+        "crossing speed does not reroll each tick");
+  auto &resident = a.predators[0];
+  const float residentMultiplier = resident.speedMultiplier;
+  const float phase = resident.phase;
+  a.advanceEnvironment(.1f, false);
+  check(near(resident.phase - phase,
+             2 * pi / a.parameter(OrbitPeriod) * residentMultiplier * .1f),
+        "orbit angular speed varies per predator");
+  a.setParameter(PredatorMode, 1);
+  resident.position = {512, 512};
+  before = resident.position;
+  a.advanceEnvironment(.1f, false);
+  check(near(std::sqrt(length2(resident.position - before)),
+             a.parameter(PredatorSpeed) * residentMultiplier * .1f),
+        "roaming speed uses predator multiplier");
+  a.setParameter(PredatorMode, 2);
+  a.setWorldSize(256);
+  a.advanceEnvironment(.1f, false);
+  check(resident.speedMultiplier == residentMultiplier,
+        "speed identity survives mode and map changes");
+  const auto last = a.predators.back().identity;
+  a.removePredator();
+  a.addPredator();
+  check(a.predators.back().identity > last,
+        "removed predator identities are not reused");
+}
 void swarmTests() {
   std::vector<Boid> flock(7);
   for (int i = 0; i < 7; i++) {
@@ -352,6 +413,7 @@ void swarmTests() {
         "swarm toggle removes steering");
 }
 int main() {
+  predatorSpeedTests();
   swarmTests();
   predatorMovementTests();
   check(near(wrap(-1), 1023) && near(wrap(1024), 0) && near(wrap(2050), 2),
@@ -403,7 +465,7 @@ int main() {
   check(sim.orbitCount() == 0, "predator lower bound");
   check(sim.sendPredator() && sim.sendPredator() && sim.crossingCount() == 2,
         "multiple crossing predators launch together");
-  for (int i = 0; i < 600; ++i)
+  for (int i = 0; i < 900; ++i)
     sim.tick(1.f / 60);
   check(!sim.crossingActive(), "crossing predator exits");
   check(sim.state().size() == 100, "predators never remove boids");

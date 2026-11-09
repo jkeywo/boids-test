@@ -6,6 +6,16 @@ float Simulation::random() {
   randomState ^= randomState << 5;
   return (randomState >> 8) * (1.f / 16777216);
 }
+void Simulation::assignPredatorIdentity(Predator &p) {
+  p.identity = ++predatorSerial;
+  uint32_t h = p.identity ^ 0x91e10da5u;
+  h ^= h >> 16;
+  h *= 0x7feb352du;
+  h ^= h >> 15;
+  h *= 0x846ca68bu;
+  h ^= h >> 16;
+  p.speedMultiplier = .8f + .4f * float(h >> 8) / 16777216.f;
+}
 Simulation::Simulation(int count)
     : query(world.query<Boid>()), snapshot(count), packed(count) {
   predators.reserve(32);
@@ -263,10 +273,11 @@ void Simulation::advanceEnvironment(float dt, bool includeWind,
   for (auto &p : predators) {
     if (p.crossing) {
       p.position += Vec{std::cos(p.heading), std::sin(p.heading)} *
-                    (parameters[CrossingSpeed] * dt);
+                    (parameters[CrossingSpeed] * p.speedMultiplier * dt);
     } else if (parameters[PredatorMode] == 0) {
-      p.phase =
-          std::fmod(p.phase + 2 * pi / parameters[OrbitPeriod] * dt, 2 * pi);
+      p.phase = std::fmod(p.phase + 2 * pi / parameters[OrbitPeriod] *
+                                        p.speedMultiplier * dt,
+                          2 * pi);
       p.position = {extent / 2 + parameters[OrbitRadius] * std::cos(p.phase),
                     extent / 2 + parameters[OrbitRadius] * std::sin(p.phase)};
       p.heading = std::remainder(p.phase + pi / 2, 2 * pi);
@@ -283,7 +294,7 @@ void Simulation::advanceEnvironment(float dt, bool includeWind,
       }
       p.heading = std::remainder(p.heading + turn, 2 * pi);
       p.position += Vec{std::cos(p.heading), std::sin(p.heading)} *
-                    (parameters[PredatorSpeed] * dt);
+                    (parameters[PredatorSpeed] * p.speedMultiplier * dt);
       p.position = {wrap(p.position.x, extent), wrap(p.position.y, extent)};
     }
   }
@@ -373,6 +384,7 @@ bool Simulation::sendPredator() {
   const float heading =
       std::atan2(destination.y - start.y, destination.x - start.x);
   predators.push_back({start, heading, 0, true, destination});
+  assignPredatorIdentity(predators.back());
   return true;
 }
 void Simulation::addPredator() {
@@ -405,6 +417,7 @@ void Simulation::addPredator() {
                        false,
                        {},
                        uint32_t(random() * 16777216.f) ^ 0x9e3779b9u});
+  assignPredatorIdentity(predators.back());
 }
 void Simulation::removePredator() {
   for (auto it = predators.end(); it != predators.begin();) {

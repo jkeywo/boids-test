@@ -294,6 +294,15 @@ const server = http.createServer((req, res) => {
       ),
       6,
     );
+    assert.equal(
+      await page.evaluate(() => boidsTest.predatorCount),
+      16,
+      "flock reset preserves global predator count",
+    );
+    await page.evaluate(() => {
+      for (let i = 0; i < 16; i++) document.querySelector("#remove").click();
+      boidsTest.setParameter("crossing-speed", 180);
+    });
     await page.reload();
     await ready();
     assert.equal(await page.evaluate(() => boidsTest.mode), "gpu");

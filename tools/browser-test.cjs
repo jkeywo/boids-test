@@ -95,19 +95,18 @@ const server = http.createServer((req, res) => {
         timeout: 60000,
       });
     const defaults = await page.evaluate(() => window.boidsTest.settings());
+    const genericNames = await page
+      .locator('.functor-panel[data-group="Predators"] [data-parameter]')
+      .evaluateAll((nodes) => nodes.map((n) => n.dataset.parameter));
     const assertDefaults = async () => {
       const actual = await page.evaluate(() => window.boidsTest.settings());
       assert.deepEqual(Object.keys(actual), Object.keys(defaults));
       for (const [name, value] of Object.entries(defaults))
-        assert(
-          Math.abs(actual[name] - value) < 1e-5,
-          `Default mismatch: ${name}`,
-        );
-      assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 1024);
-      assert.equal(
-        await page.evaluate(() => window.boidsTest.predatorCount),
-        0,
-      );
+        if (!genericNames.includes(name))
+          assert(
+            Math.abs(actual[name] - value) < 1e-5,
+            `Default mismatch: ${name}`,
+          );
     };
     await page.selectOption("#map-size", "256");
     await page.locator("#param-wind-enabled").check();
@@ -161,11 +160,11 @@ const server = http.createServer((req, res) => {
       (key) => JSON.parse(localStorage.getItem(key)),
       storageKey,
     );
-    assert.equal(saved.version, 2);
+    assert.equal(saved.version, 3);
     assert.equal(saved.activeSlot, 0);
     assert.equal(saved.slots.length, 6);
-    assert.equal(saved.slots[0].worldSize, 256);
-    assert.equal(saved.slots[0].orbitCount, 2);
+    assert.equal(saved.generic.worldSize, 256);
+    assert.equal(saved.generic.orbitCount, 2);
     assert.equal(saved.slots[0].parameters.speed, 111);
     assert.equal("crossings" in saved.slots[0], false);
     await page.evaluate(() =>
@@ -236,7 +235,7 @@ const server = http.createServer((req, res) => {
       (key) => JSON.parse(localStorage.getItem(key)),
       storageKey,
     );
-    assert.equal(migrated.version, 2);
+    assert.equal(migrated.version, 3);
     assert.equal(migrated.slots.length, 6);
     assert.equal(migrated.activeSlot, 0);
     assert.equal(migrated.slots[0].parameters["wind-octaves"], 6);
