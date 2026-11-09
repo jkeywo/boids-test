@@ -57,6 +57,7 @@ fn hueColour(degrees: f32) -> vec3<f32> {
     let old = previous.values[id];
     point = old.position+difference(old.position, boid.position)*cfg.data.w;
     point-=cfg.data.x*floor(point/cfg.data.x);
+    point = select(point, vec2(0.0), point >= vec2(cfg.data.x));
     direction = normalize(boid.velocity);
     var hue = p(P_BOID_HUE);
     if (p(P_DIRECTION_HUE) > 0.0) { hue += atan2(direction.y, direction.x) * 57.2957795131; }

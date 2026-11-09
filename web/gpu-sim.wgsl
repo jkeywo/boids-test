@@ -55,7 +55,10 @@ fn random(input: u32) -> f32 {
   return f32(hash(input)&0xffffffu)/16777216.0;
 }
 fn wrap(v: vec2<f32>) -> vec2<f32> {
-  return v-cfg.data.x*floor(v/cfg.data.x);
+  let r = v-cfg.data.x*floor(v/cfg.data.x);
+  // A tiny negative coordinate can round up to exactly extent after addition.
+  // Match the CPU guard so every stored position stays in [0, extent).
+  return select(r, vec2(0.0), r >= vec2(cfg.data.x));
 }
 fn difference(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
   var d = b-a;
