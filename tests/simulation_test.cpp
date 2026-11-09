@@ -37,7 +37,20 @@ int main() {
   std::vector<Predator> p{{{1020, 500}, 0, 0, false}};
   check(Flee{}({4, 500}, p).x > 0, "predator flee wraps seam");
   check(length2(Flee{}({500, 500}, p)) == 0, "predator radius");
+  NeighbourBudgetController quality;
+  for (int i = 0; i < 10; ++i)
+    quality.observe(1200, 60);
+  check(quality.observe(0, 0) == 8,
+        "sustained slow ticks reduce work to a bounded minimum");
+  for (int i = 0; i < 10; ++i)
+    quality.observe(120, 60);
+  check(quality.observe(0, 0) == 48,
+        "spare capacity restores neighbour detail");
   Simulation sim(100);
+  sim.setNeighbourBudget(-1);
+  check(sim.neighbourBudget() == 8, "minimum neighbour budget");
+  sim.setNeighbourBudget(100);
+  check(sim.neighbourBudget() == 48, "maximum neighbour budget");
   for (int i = 0; i < 20; ++i)
     sim.addPredator();
   check(sim.orbitCount() == 16, "predator upper bound");
@@ -53,6 +66,12 @@ int main() {
     sim.tick(1.f / 60);
   check(!sim.crossingActive(), "crossing predator exits");
   check(sim.state().size() == 100, "predators never remove boids");
+  Simulation threat(1);
+  threat.setBoid(0, {4, 512}, pi);
+  threat.predators.push_back({{1020, 512}, 0, 0, true});
+  threat.tick(1.f / 60);
+  check(std::abs(threat.state()[0].velocity.y) > 1,
+        "predator broadphase preserves seam flee");
   Simulation pair(2);
   pair.setBoid(0, {1, 512}, pi);
   pair.setBoid(1, {1023, 512}, 0);
@@ -75,6 +94,7 @@ int main() {
   for (int i = 0; i < population; ++i)
     dense.setBoid(i, {512, 512}, 0);
   dense.setShoal(true);
+  dense.setNeighbourBudget(8);
   for (int i = 0; i < 10; ++i)
     dense.tick(1.f / 60);
   for (auto &boid : dense.state())

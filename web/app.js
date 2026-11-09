@@ -11,6 +11,9 @@ let moduleInstance;
 const frameTimes = [];
 const tickTimes = [];
 let measuring = false;
+let initialTicks = 0,
+  minBudget = 48,
+  maxBudget = 8;
 function resize() {
   const width = Math.max(
     1,
@@ -50,6 +53,9 @@ window.boidsTest = {
     frameTimes.length = 0;
     tickTimes.length = 0;
     measuring = true;
+    initialTicks = moduleInstance._statistic(6);
+    minBudget = 48;
+    maxBudget = 8;
   },
   stopBenchmark() {
     measuring = false;
@@ -64,6 +70,11 @@ window.boidsTest = {
       p95ms: quantile(0.95),
       p99ms: quantile(0.99),
       meanTickMs: tickTimes.reduce((a, b) => a + b, 0) / tickTimes.length,
+      simulationHz:
+        (moduleInstance._statistic(6) - initialTicks) /
+        (frameTimes.reduce((a, b) => a + b, 0) / 1000),
+      minNeighbourBudget: minBudget,
+      maxNeighbourBudget: maxBudget,
       renderResolution: canvas.width,
       userAgent: navigator.userAgent,
       population: 10000,
@@ -109,6 +120,9 @@ window.boidsTest = {
         frames++;
         if (measuring) {
           frameTimes.push(dt * 1000);
+          const budget = moduleInstance._statistic(5);
+          minBudget = Math.min(minBudget, budget);
+          maxBudget = Math.max(maxBudget, budget);
           tickTimes.push(moduleInstance._statistic(3));
         }
       }

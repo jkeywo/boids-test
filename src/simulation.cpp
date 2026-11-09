@@ -48,11 +48,11 @@ Neighbours Simulation::neighbours(const Boid &b) const {
   for (int j = 0; j < 9; ++j) {
     const int count = counts[buckets[j]];
     samples[j] =
-        total <= candidateBudget ? count : count * candidateBudget / total;
+        total <= candidateLimit ? count : count * candidateLimit / total;
     assigned += samples[j];
   }
   // Allocate rounding leftovers without consistently favouring one direction.
-  int remaining = std::min(total, candidateBudget) - assigned;
+  int remaining = std::min(total, candidateLimit) - assigned;
   for (int k = 0; k < 9 && remaining; ++k) {
     const int j = (k + b.index % 9) % 9;
     if (samples[j] < counts[buckets[j]]) {
@@ -111,11 +111,25 @@ void Simulation::tick(float dt) {
       std::remove_if(predators.begin(), predators.end(),
                      [](auto &p) { return p.crossing && p.position.x > 1040; }),
       predators.end());
+  // 128-unit cells exceed the flee radius. Adjacent wrapped cells therefore
+  // contain every relevant predator, avoiding a full predator scan per boid.
+  predatorMasks.fill(0);
+  for (unsigned i = 0; i < predators.size(); ++i) {
+    const int cx = int(wrap(predators[i].position.x) / 128);
+    const int cy = int(wrap(predators[i].position.y) / 128);
+    for (int dy = -1; dy <= 1; ++dy)
+      for (int dx = -1; dx <= 1; ++dx)
+        predatorMasks[(cx + dx + 8) % 8 + 8 * ((cy + dy + 8) % 8)] |= 1u << i;
+  }
   buildGrid();
   query.each([&](Boid &b) {
     Neighbours n = neighbours(snapshot[b.index]);
     Vec desired = Cohesion{}(n) * .65f + Alignment{}(n) * 1.f +
-                  Repulsion{}(n) * 1.6f + Flee{}(b.position, predators) * 5.f;
+                  Repulsion{}(n) * 1.6f +
+                  Flee{}(b.position, predators,
+                         predatorMasks[int(b.position.x / 128) +
+                                       8 * int(b.position.y / 128)]) *
+                      5.f;
     if (length2(desired) < 1e-10f)
       desired = unit(b.velocity);
     float error = angleDifference(b.heading, std::atan2(desired.y, desired.x));

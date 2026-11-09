@@ -11,6 +11,8 @@ static std::vector<Vec> previous;
 static GLuint program, vao, vbo;
 static double accumulator = 0;
 static float simulationMs = 0;
+static NeighbourBudgetController quality;
+static uint64_t totalTicks = 0;
 static GLuint shader(GLenum type, const char *source) {
   GLuint s = glCreateShader(type);
   glShaderSource(s, 1, &source, nullptr);
@@ -100,11 +102,15 @@ EMSCRIPTEN_KEEPALIVE void frame(double dt) {
     sim->tick(1.f / 60);
     accumulator -= 1. / 60;
     ++steps;
+    ++totalTicks;
   }
   if (steps == 4)
     accumulator = std::fmod(accumulator, 1. / 60);
-  if (steps)
-    simulationMs = float((emscripten_get_now() - begin) / steps);
+  if (steps) {
+    const float elapsedMs = float(emscripten_get_now() - begin);
+    simulationMs = elapsedMs / steps;
+    sim->setNeighbourBudget(quality.observe(elapsedMs, steps));
+  }
   auto &state = sim->state();
   float alpha = float(accumulator * 60);
   instances.clear();
@@ -161,6 +167,10 @@ EMSCRIPTEN_KEEPALIVE double statistic(int id) {
     return sim->shoal;
   case 3:
     return simulationMs;
+  case 5:
+    return sim->neighbourBudget();
+  case 6:
+    return double(totalTicks);
   default:
     return population;
   }

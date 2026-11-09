@@ -122,12 +122,16 @@ const server = http.createServer((req, res) => {
     });
     const seconds = Number(process.env.BENCHMARK_SECONDS || 5);
     const results = [];
-    for (const scenario of [
+    const scenarios = [
       { name: "baseline", shoal: false, count: 0 },
       { name: "shoal", shoal: true, count: 0 },
       { name: "eight-predators", shoal: true, count: 8 },
       { name: "sixteen-predators", shoal: true, count: 16 },
-    ]) {
+    ];
+    const selected = process.env.BENCHMARK_SCENARIOS?.split(",");
+    for (const scenario of scenarios.filter(
+      (s) => !selected || selected.includes(s.name),
+    )) {
       if (
         ((await page.locator("#shoal").getAttribute("aria-pressed")) ===
           "true") !==
