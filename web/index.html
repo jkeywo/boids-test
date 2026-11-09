@@ -37,8 +37,19 @@
               +
             </button>
           </div>
-          <p class="hint">Circling 400 units from the centre.</p>
+          <p class="hint" id="orbit-caption">
+            Circling 400 units from the centre.
+          </p>
+          <button id="small-map" aria-pressed="false" disabled>
+            <span>512 x 512 map</span
+            ><span class="tag" id="map-state">OFF</span>
+          </button>
         </section>
+        <div
+          id="parameter-controls"
+          class="parameter-scroll"
+          aria-label="Functor parameters"
+        ></div>
         <footer>
           <div class="metric">
             <span>POPULATION</span><strong>10,000</strong>
@@ -75,7 +86,7 @@
           </div>
         </div>
         <div class="caption">
-          <span>1024 × 1024 / TOROIDAL WORLD</span
+          <span id="world-caption">1024 × 1024 / TOROIDAL WORLD</span
           ><span>COHESION · ALIGNMENT · REPULSION</span>
         </div>
       </section>

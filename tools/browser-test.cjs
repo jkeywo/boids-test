@@ -115,6 +115,82 @@ const server = http.createServer((req, res) => {
     for (let i = 1; i < 16; ++i) await page.click("#add");
     assert.equal(await page.locator("#add").isDisabled(), true);
     assert.equal(await page.locator("#count").textContent(), "16");
+    // Exercise every generated slider and toggle through its actual DOM event.
+    const controlReport = await page.evaluate(() => {
+      const original = window.boidsTest.settings();
+      document
+        .querySelectorAll(".functor-panel")
+        .forEach((panel) => (panel.open = true));
+      let sliders = 0,
+        toggles = 0;
+      for (const input of document.querySelectorAll("input[data-parameter]")) {
+        const name = input.dataset.parameter;
+        if (input.type === "checkbox") {
+          for (const checked of [false, true]) {
+            input.checked = checked;
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+            if (!!window.boidsTest.settings()[name] !== checked)
+              throw new Error("Toggle did not apply: " + name);
+          }
+          toggles++;
+        } else {
+          input.value =
+            Number(input.min) + (Number(input.max) - Number(input.min)) * 0.63;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          const actual = window.boidsTest.settings()[name];
+          if (Math.abs(Number(input.value) - actual) > 0.001)
+            throw new Error("Slider did not apply: " + name);
+          if (!document.getElementById(input.id + "-value").textContent)
+            throw new Error("Missing slider output");
+          sliders++;
+        }
+      }
+      for (const [name, value] of Object.entries(original))
+        window.boidsTest.setParameter(name, value);
+      document
+        .querySelectorAll(".functor-panel")
+        .forEach((panel) => (panel.open = panel.dataset.group === "Wind"));
+      document.querySelector("#parameter-controls").scrollTop = 0;
+      return { sliders, toggles };
+    });
+    assert.equal(controlReport.sliders, 27);
+    assert.equal(controlReport.toggles, 5); // Shoal has its existing separate quick toggle.
+    await page.click("#small-map");
+    assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 512);
+    assert.equal(
+      await page.locator("#small-map").getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.equal(
+      Number(await page.locator("#param-orbit-radius").inputValue()),
+      200,
+    );
+    assert.equal(
+      await page.locator("#param-orbit-radius").getAttribute("max"),
+      "240",
+    );
+    await page.locator("#param-wind-enabled").check();
+    await page.evaluate(() => window.boidsTest.setParameter("wind-octaves", 6));
+    await page.waitForTimeout(300);
+    await page.screenshot({
+      path: path.join(artifact, "wind-small.png"),
+      fullPage: true,
+    });
+    await page.click("#small-map");
+    assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 1024);
+    assert.equal(
+      Number(await page.locator("#param-orbit-radius").inputValue()),
+      400,
+    );
+    await page.locator("#param-wind-enabled").uncheck();
+    await page.evaluate(() => window.boidsTest.setParameter("wind-octaves", 3));
+    await page.evaluate(
+      () => (document.querySelector("#parameter-controls").scrollTop = 0),
+    );
+    console.log(
+      "PASS: all parameter controls, Perlin wind and live map resizing",
+      controlReport,
+    );
     console.log("Taking screenshot");
     await page.screenshot({
       path: path.join(artifact, "desktop.png"),
@@ -127,11 +203,29 @@ const server = http.createServer((req, res) => {
       { name: "shoal", shoal: true, count: 0 },
       { name: "eight-predators", shoal: true, count: 8 },
       { name: "sixteen-predators", shoal: true, count: 16 },
+      { name: "wind", shoal: true, count: 16, wind: true },
+      {
+        name: "wind-small",
+        shoal: true,
+        count: 16,
+        wind: true,
+        small: true,
+        octaves: 6,
+      },
     ];
     const selected = process.env.BENCHMARK_SCENARIOS?.split(",");
     for (const scenario of scenarios.filter(
       (s) => !selected || selected.includes(s.name),
     )) {
+      const isSmall = await page.evaluate(
+        () => window.boidsTest.worldSize === 512,
+      );
+      if (isSmall !== !!scenario.small) await page.click("#small-map");
+      await page.locator("#param-wind-enabled").setChecked(!!scenario.wind);
+      await page.evaluate(
+        (octaves) => window.boidsTest.setParameter("wind-octaves", octaves),
+        scenario.octaves || 3,
+      );
       if (
         ((await page.locator("#shoal").getAttribute("aria-pressed")) ===
           "true") !==
@@ -153,6 +247,11 @@ const server = http.createServer((req, res) => {
         count--;
       }
       if (scenario.count) await page.click("#send");
+      await page.evaluate(() => {
+        const canvas = document.querySelector("canvas");
+        canvas.width = window.boidsTest.worldSize;
+        canvas.height = canvas.width;
+      });
       await page.waitForTimeout(1000);
       await page.evaluate(() => window.boidsTest.startBenchmark());
       await page.waitForTimeout(seconds * 1000);
@@ -206,7 +305,18 @@ const server = http.createServer((req, res) => {
       path.join(artifact, "benchmark.json"),
       JSON.stringify(report, null, 2),
     );
-    console.log(JSON.stringify(report, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...report,
+          results: report.results.map(
+            ({ settings, userAgent, ...metrics }) => metrics,
+          ),
+        },
+        null,
+        2,
+      ),
+    );
     console.log(
       "PASS: browser controls, WebGL/WASM, desktop/mobile layout and project-path loading",
     );

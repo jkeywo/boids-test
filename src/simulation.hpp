@@ -1,5 +1,7 @@
 #pragma once
 #include "flecs.h"
+#include "noise.hpp"
+#include "parameters.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -22,21 +24,20 @@ struct Vec {
   }
 };
 inline float length2(Vec v) { return v.x * v.x + v.y * v.y; }
-inline float wrap(float x) {
-  const float result = x - size * std::floor(x / size);
-  return result >= size ? 0.f : result;
+inline float wrap(float x, float extent = size) {
+  const float r = x - extent * std::floor(x / extent);
+  return r >= extent ? 0 : r;
 }
-inline Vec delta(Vec a, Vec b) {
+inline Vec delta(Vec a, Vec b, float extent = size) {
   Vec d = b - a;
-  // Inputs are in the world, or at most one predator half-length outside it.
-  if (d.x >= size / 2)
-    d.x -= size;
-  if (d.x < -size / 2)
-    d.x += size;
-  if (d.y >= size / 2)
-    d.y -= size;
-  if (d.y < -size / 2)
-    d.y += size;
+  if (d.x >= extent / 2)
+    d.x -= extent;
+  if (d.x < -extent / 2)
+    d.x += extent;
+  if (d.y >= extent / 2)
+    d.y -= extent;
+  if (d.y < -extent / 2)
+    d.y += extent;
   return d;
 }
 inline Vec unit(Vec v) {
@@ -44,13 +45,12 @@ inline Vec unit(Vec v) {
   return q > 1e-12f ? v * (1 / std::sqrt(q)) : Vec{};
 }
 inline float angleDifference(float a, float b) {
-  // Simulation headings are normalized; atan2 returns a normalized target.
-  float difference = b - a;
-  if (difference > pi)
-    difference -= 2 * pi;
-  if (difference < -pi)
-    difference += 2 * pi;
-  return difference;
+  float d = b - a;
+  if (d > pi)
+    d -= 2 * pi;
+  if (d < -pi)
+    d += 2 * pi;
+  return d;
 }
 struct Boid {
   Vec position, velocity;
@@ -82,46 +82,68 @@ struct Repulsion {
 };
 struct Flee {
   Vec operator()(Vec p, const std::vector<Predator> &predators,
-                 uint32_t candidates = ~0u) const {
+                 uint32_t candidates = ~0u, float radius = 100,
+                 float extent = size) const {
     Vec force;
     while (candidates) {
-      const unsigned index = std::countr_zero(candidates);
+      unsigned i = std::countr_zero(candidates);
       candidates &= candidates - 1;
-      if (index >= predators.size())
+      if (i >= predators.size())
         break;
-      const auto &q = predators[index];
-      Vec d = delta(q.position, p);
+      const auto &q = predators[i];
+      Vec d = delta(q.position, p, extent);
       float l = length2(d);
-      if (l < 10000) {
+      if (l < radius * radius) {
         if (l < 1e-8f)
           d = {std::cos(q.heading + pi / 2), std::sin(q.heading + pi / 2)};
-        force += unit(d) * (1 - std::sqrt(l) / 100);
+        force += unit(d) * (1 - std::sqrt(l) / radius);
       }
     }
     return force;
   }
 };
 struct Shoal {
-  void operator()(Boid &b, float error, float dt, bool enabled) const {
+  void operator()(Boid &b, float error, float dt, bool enabled,
+                  const Parameters &p = {}) const {
     if (!enabled) {
       b.boost = 0;
       b.cooldown = 0;
       b.armed = true;
       return;
     }
-    b.boost = std::max(0.f, b.boost - dt);
+    b.boost = std::max(0.f, std::min(b.boost, p[ShoalDuration]) - dt);
     b.cooldown = std::max(0.f, b.cooldown - dt);
-    if (std::abs(error) < 20 * pi / 180 && b.cooldown == 0)
+    if (std::abs(error) <= p[ShoalRearm] * pi / 180 && b.cooldown == 0)
       b.armed = true;
-    if (b.armed && b.cooldown == 0 && std::abs(error) > pi / 4) {
-      b.boost = .6f;
-      b.cooldown = 1.4f;
+    if (b.armed && b.cooldown == 0 &&
+        std::abs(error) > p[ShoalThreshold] * pi / 180) {
+      b.boost = p[ShoalDuration];
+      b.cooldown = p[ShoalDuration] + p[ShoalCooldown];
       b.armed = false;
     }
   }
 };
-// Hysteresis keeps expensive browsers responsive without dropping entities or
-// ticks.
+struct Wind {
+  Vec operator()(Vec position, float time, const Parameters &p) const {
+    Vec result;
+    float amplitude = 1, total = 0, frequency = 1 / p[WindScale],
+          z = time * p[WindTime];
+    for (int octave = 0; octave < int(p[WindOctaves]); ++octave) {
+      result.x +=
+          amplitude * Perlin3D::sample(position.x * frequency,
+                                       position.y * frequency, z, 0x1234abcdu);
+      result.y +=
+          amplitude * Perlin3D::sample(position.x * frequency,
+                                       position.y * frequency, z, 0xa74f53c1u);
+      total += amplitude;
+      amplitude *= p[WindPersistence];
+      frequency *= p[WindLacunarity];
+      z *= p[WindLacunarity];
+    }
+    return {result.x / total * p[WindX] * p[WindWeight],
+            result.y / total * p[WindY] * p[WindWeight]};
+  }
+};
 struct NeighbourBudgetController {
   static constexpr int levels[] = {48, 32, 24, 16, 12, 8};
   int level = 0, ticks = 0;
@@ -132,7 +154,7 @@ struct NeighbourBudgetController {
     ticks += steps;
     costMs += elapsedMs;
     if (ticks >= 60) {
-      const float average = costMs / ticks;
+      float average = costMs / ticks;
       if (average > 8 && level < 5)
         ++level;
       else if (average < 3 && level > 0)
@@ -151,24 +173,42 @@ class Simulation {
   std::array<int, cellCount + 1> offsets{};
   std::array<int, cellCount> counts{}, cursor{};
   std::array<uint32_t, 64> predatorMasks{};
+  std::array<Vec, cellCount> windPrevious{}, windNext{};
+  Parameters parameters;
   uint32_t randomState = 0x12345678;
   uint64_t ticks = 0;
   int candidateLimit = candidateBudget;
+  float extent = size, cellWidth = 32, perceptionRadius = 32;
+  int gridSide = 32;
+  double elapsed = 0, windFrame = -1;
+  float windAlpha = 0;
   float random();
-  static int cell(Vec p) { return int(p.x / 32) + cells * int(p.y / 32); }
+  int cell(Vec p) const {
+    return int(p.x / cellWidth) + gridSide * int(p.y / cellWidth);
+  }
+  void configureGrid();
   void buildGrid();
   Neighbours neighbours(const Boid &b) const;
+  void updateWind();
+  void fillWind(std::array<Vec, cellCount> &field, float time);
 
 public:
-  bool shoal = false;
   std::vector<Predator> predators;
   explicit Simulation(int count = population);
   void tick(float dt);
-  void setNeighbourBudget(int value) {
-    candidateLimit = std::clamp(value, 8, candidateBudget);
+  void setNeighbourBudget(int v) {
+    candidateLimit = std::clamp(v, 8, candidateBudget);
   }
   int neighbourBudget() const { return candidateLimit; }
-  void setShoal(bool value);
+  float parameter(Parameter id) const { return parameters[id]; }
+  bool setParameter(Parameter id, float value);
+  float parameterMax(Parameter id) const {
+    return id == OrbitRadius ? extent / 2 - 16 : parameterSpecs[id].maximum;
+  }
+  float worldSize() const { return extent; }
+  void setSmallMap(bool small);
+  Vec windAt(Vec position) const;
+  void setShoal(bool enabled);
   void addPredator();
   void removePredator();
   bool sendPredator();

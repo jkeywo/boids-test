@@ -2,12 +2,76 @@
 const status = document.querySelector("#status");
 const canvas = document.querySelector("canvas");
 const buttons = Object.fromEntries(
-  ["shoal", "send", "add", "remove"].map((id) => [
+  ["shoal", "send", "add", "remove", "small-map"].map((id) => [
     id,
     document.getElementById(id),
   ]),
 );
 let moduleInstance;
+let parameterDefinitions = [];
+const parameterWidgets = new Map();
+function formatParameter(spec, value) {
+  const decimals = spec.step < 0.1 ? 2 : spec.step < 1 ? 1 : 0;
+  return Number(value).toFixed(decimals) + (spec.unit ? " " + spec.unit : "");
+}
+function buildParameterControls() {
+  parameterDefinitions = JSON.parse(
+    moduleInstance.UTF8ToString(moduleInstance._parameter_schema()),
+  );
+  const container = document.querySelector("#parameter-controls");
+  const groups = new Map();
+  for (const spec of parameterDefinitions) {
+    let group = groups.get(spec.group);
+    if (!group) {
+      const details = document.createElement("details");
+      details.className = "functor-panel";
+      details.dataset.group = spec.group;
+      details.open = spec.group === "Wind";
+      const summary = document.createElement("summary");
+      const title = document.createElement("span");
+      title.textContent = spec.group;
+      summary.append(title);
+      details.append(summary);
+      container.append(details);
+      group = { details, summary };
+      groups.set(spec.group, group);
+    }
+    if (spec.name === "shoal-enabled") continue; // The existing quick toggle owns this parameter.
+    const input = document.createElement("input");
+    input.id = "param-" + spec.name;
+    input.dataset.parameter = spec.name;
+    if (spec.toggle) {
+      input.type = "checkbox";
+      input.setAttribute("aria-label", "Enable " + spec.group.toLowerCase());
+      input.addEventListener("click", (event) => event.stopPropagation());
+      group.summary.append(input);
+    } else {
+      input.type = "range";
+      input.min = spec.min;
+      input.max = spec.max;
+      input.step = spec.step;
+      const row = document.createElement("div");
+      row.className = "parameter-row";
+      const label = document.createElement("label");
+      label.htmlFor = input.id;
+      label.textContent = spec.label;
+      const output = document.createElement("output");
+      output.htmlFor = input.id;
+      output.id = input.id + "-value";
+      row.append(label, output, input);
+      group.details.append(row);
+    }
+    input.addEventListener(spec.toggle ? "change" : "input", () => {
+      moduleInstance._set_parameter(
+        spec.id,
+        spec.toggle ? Number(input.checked) : Number(input.value),
+      );
+      refresh();
+    });
+    parameterWidgets.set(spec.id, { input, spec });
+  }
+}
+
 const frameTimes = [];
 const tickTimes = [];
 let measuring = false;
@@ -18,7 +82,7 @@ function resize() {
   const width = Math.max(
     1,
     Math.min(
-      1024,
+      moduleInstance ? moduleInstance._statistic(7) : 1024,
       Math.round(
         canvas.getBoundingClientRect().width * window.devicePixelRatio,
       ),
@@ -39,16 +103,64 @@ function refresh() {
   buttons.send.disabled = crossing;
   buttons.add.disabled = count >= 16;
   buttons.remove.disabled = count === 0;
+  const width = m._statistic(7),
+    small = width === 512;
+  buttons["small-map"].disabled = false;
+  buttons["small-map"].setAttribute("aria-pressed", String(small));
+  document.querySelector("#map-state").textContent = small ? "ON" : "OFF";
+  document.querySelector("#world-caption").textContent =
+    `${width} x ${width} / TOROIDAL WORLD`;
+  const orbitSpec = parameterDefinitions.find(
+    (spec) => spec.name === "orbit-radius",
+  );
+  document.querySelector("#orbit-caption").textContent =
+    `Circling ${m._get_parameter(orbitSpec.id).toFixed(0)} units from the centre.`;
+  for (const { input, spec } of parameterWidgets.values()) {
+    const value = m._get_parameter(spec.id);
+    if (spec.toggle) input.checked = value > 0;
+    else {
+      input.max = m._parameter_max(spec.id);
+      input.value = value;
+      document.getElementById(input.id + "-value").value = formatParameter(
+        spec,
+        value,
+      );
+    }
+  }
 }
-Object.entries({ shoal: 0, send: 1, add: 2, remove: 3 }).forEach(
-  ([id, action]) =>
-    buttons[id].addEventListener("click", () => {
-      moduleInstance._command(action);
-      refresh();
-    }),
+Object.entries({
+  shoal: 0,
+  send: 1,
+  add: 2,
+  remove: 3,
+  "small-map": 4,
+}).forEach(([id, action]) =>
+  buttons[id].addEventListener("click", () => {
+    moduleInstance._command(action);
+    refresh();
+    if (action === 4) resize();
+  }),
 );
 window.boidsTest = {
   ready: false,
+  get worldSize() {
+    return moduleInstance._statistic(7);
+  },
+  settings() {
+    return Object.fromEntries(
+      parameterDefinitions.map((spec) => [
+        spec.name,
+        moduleInstance._get_parameter(spec.id),
+      ]),
+    );
+  },
+  setParameter(name, value) {
+    const spec = parameterDefinitions.find((spec) => spec.name === name);
+    if (!spec) throw new Error("Unknown parameter: " + name);
+    const actual = moduleInstance._set_parameter(spec.id, value);
+    refresh();
+    return actual;
+  },
   startBenchmark() {
     frameTimes.length = 0;
     tickTimes.length = 0;
@@ -78,6 +190,8 @@ window.boidsTest = {
       renderResolution: canvas.width,
       userAgent: navigator.userAgent,
       population: 10000,
+      worldSize: moduleInstance._statistic(7),
+      settings: this.settings(),
     };
   },
 };
@@ -91,6 +205,7 @@ window.boidsTest = {
       throw new Error(
         "WebGL 2 is required. Enable hardware acceleration or use a compatible browser.",
       );
+    buildParameterControls();
     buttons.shoal.disabled = false;
     status.hidden = true;
     refresh();

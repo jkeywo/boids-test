@@ -305,3 +305,155 @@ canvas {
     font-size: 8px;
   }
 }
+/* Parameter workspace: the controls scroll independently of the square view. */
+.app {
+  height: 100svh;
+  max-height: 1250px;
+  padding: 26px 32px;
+  gap: 28px;
+}
+aside {
+  width: 280px;
+  min-height: 0;
+  padding: 0;
+}
+h1 {
+  font-size: 48px;
+  letter-spacing: -3px;
+  margin: 8px 0;
+}
+header p {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.controls {
+  margin-top: 20px;
+}
+.hint {
+  margin: 7px 2px 12px;
+  font-size: 10px;
+}
+.parameter-scroll {
+  flex: 1;
+  min-height: 100px;
+  overflow-y: auto;
+  margin-top: 16px;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #35545c transparent;
+}
+.functor-panel {
+  border-top: 1px solid #26353c;
+  padding: 9px 0;
+}
+.functor-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  min-height: 25px;
+}
+.functor-panel summary > span::before {
+  content: "›";
+  color: #45d4db;
+  margin-right: 8px;
+  display: inline-block;
+}
+.functor-panel[open] summary > span::before {
+  transform: rotate(90deg);
+}
+.functor-panel input[type="checkbox"] {
+  accent-color: #45d4db;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.parameter-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 6px;
+  padding-top: 12px;
+}
+.parameter-row label {
+  font-size: 10px;
+  color: #a8bcc4;
+}
+.parameter-row output {
+  font-size: 10px;
+  color: #45d4db;
+  font-variant-numeric: tabular-nums;
+}
+.parameter-row input {
+  grid-column: 1/-1;
+  width: 100%;
+  min-width: 0;
+  accent-color: #45d4db;
+  cursor: pointer;
+  margin: 0;
+  height: 20px;
+}
+.parameter-row input:focus-visible,
+.functor-panel input:focus-visible {
+  outline: 2px solid #45d4db;
+  outline-offset: 2px;
+}
+footer {
+  padding-top: 12px;
+  margin-top: 0;
+}
+.legend {
+  margin: 16px 0 12px;
+}
+@media (max-width: 750px) {
+  .app {
+    padding: 14px 12px;
+    gap: 14px;
+  }
+  aside {
+    width: 146px;
+  }
+  h1 {
+    font-size: 38px;
+  }
+  header p {
+    font-size: 10px;
+  }
+  .controls {
+    margin-top: 14px;
+  }
+  .hint {
+    font-size: 9px;
+    margin-bottom: 10px;
+  }
+  .parameter-scroll {
+    margin-top: 10px;
+    padding-right: 4px;
+    min-height: 80px;
+  }
+  .functor-panel summary {
+    font-size: 10px;
+  }
+  .parameter-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding-top: 10px;
+  }
+  .parameter-row output {
+    font-size: 9px;
+  }
+  .parameter-row input {
+    grid-column: 1;
+  }
+  .metric {
+    margin-top: 8px;
+  }
+  footer {
+    padding-top: 6px;
+  }
+  .legend {
+    margin: 12px 0 9px;
+  }
+}

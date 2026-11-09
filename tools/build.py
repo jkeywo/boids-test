@@ -49,7 +49,7 @@ def main():
     site.mkdir(exist_ok=True)
     run(common + ['src/browser.cpp', '--no-entry', '-sMIN_WEBGL_VERSION=2',
                   '-sMAX_WEBGL_VERSION=2', '-sMODULARIZE=1', '-sEXPORT_NAME=createBoids',
-                  '-sENVIRONMENT=web', '-sALLOW_MEMORY_GROWTH=1',
+                  '-sENVIRONMENT=web', '-sEXPORTED_RUNTIME_METHODS=UTF8ToString', '-sALLOW_MEMORY_GROWTH=1',
                   '-sINITIAL_MEMORY=33554432', '-sFILESYSTEM=0', '-o', site / 'boids.js'])
     for file in (ROOT / 'web').iterdir():
         shutil.copy2(file, site / file.name)

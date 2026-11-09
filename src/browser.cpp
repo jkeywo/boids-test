@@ -9,6 +9,7 @@ static std::unique_ptr<Simulation> sim;
 static std::vector<float> instances;
 static std::vector<Vec> previous;
 static GLuint program, vao, vbo;
+static GLint worldSizeUniform;
 static double accumulator = 0;
 static float simulationMs = 0;
 static NeighbourBudgetController quality;
@@ -43,8 +44,9 @@ EMSCRIPTEN_KEEPALIVE int initialize() {
 layout(location=0) in vec2 vertex;
 layout(location=1) in vec4 transform;
 layout(location=2) in vec2 flags;
+uniform float worldSize;
 out vec3 color;
-void main(){float s=flags.x>0.5?3.2:1.;vec2 v=vertex*s;vec2 p=transform.xy+vec2(v.x*transform.z-v.y*transform.w,v.x*transform.w+v.y*transform.z);gl_Position=vec4(p.x/512.-1.,1.-p.y/512.,0.,1.);color=flags.x>0.5?vec3(1.,.27,.32):mix(vec3(.23,.83,.86),vec3(1.,.88,.46),flags.y);})";
+void main(){float s=flags.x>0.5?3.2:1.;vec2 v=vertex*s;vec2 p=transform.xy+vec2(v.x*transform.z-v.y*transform.w,v.x*transform.w+v.y*transform.z);gl_Position=vec4(p.x/worldSize*2.-1.,1.-p.y/worldSize*2.,0.,1.);color=flags.x>0.5?vec3(1.,.27,.32):mix(vec3(.23,.83,.86),vec3(1.,.88,.46),flags.y);})";
   const char *fs = R"(#version 300 es
 precision mediump float;
 in vec3 color;out vec4 outColor;
@@ -55,6 +57,7 @@ void main(){outColor=vec4(color,1.);})";
   glAttachShader(program, vert);
   glAttachShader(program, frag);
   glLinkProgram(program);
+  worldSizeUniform = glGetUniformLocation(program, "worldSize");
   glDeleteShader(vert);
   glDeleteShader(frag);
   GLint linked;
@@ -115,11 +118,12 @@ EMSCRIPTEN_KEEPALIVE void frame(double dt) {
   float alpha = float(accumulator * 60);
   instances.clear();
   for (auto &b : state) {
-    Vec p = previous[b.index] + delta(previous[b.index], b.position) * alpha;
-    const float speed = b.boost > 0 ? 105.f : 70.f;
+    Vec p = previous[b.index] +
+            delta(previous[b.index], b.position, sim->worldSize()) * alpha;
+    const Vec direction = unit(b.velocity);
     instances.insert(instances.end(),
-                     {wrap(p.x), wrap(p.y), b.velocity.x / speed,
-                      b.velocity.y / speed, 0, b.boost > 0 ? 1.f : 0.f});
+                     {wrap(p.x, sim->worldSize()), wrap(p.y, sim->worldSize()),
+                      direction.x, direction.y, 0, b.boost > 0 ? 1.f : 0.f});
   }
   for (auto &p : sim->predators)
     instances.insert(instances.end(),
@@ -131,6 +135,7 @@ EMSCRIPTEN_KEEPALIVE void frame(double dt) {
   glClearColor(.025f, .048f, .065f, 1);
   glClear(GL_COLOR_BUFFER_BIT);
   glUseProgram(program);
+  glUniform1f(worldSizeUniform, sim->worldSize());
   glBindVertexArray(vao);
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
   glBufferSubData(GL_ARRAY_BUFFER, 0, instances.size() * sizeof(float),
@@ -142,7 +147,7 @@ EMSCRIPTEN_KEEPALIVE void command(int action) {
     return;
   switch (action) {
   case 0:
-    sim->setShoal(!sim->shoal);
+    sim->setShoal(!sim->parameter(ShoalEnabled));
     break;
   case 1:
     sim->sendPredator();
@@ -152,6 +157,12 @@ EMSCRIPTEN_KEEPALIVE void command(int action) {
     break;
   case 3:
     sim->removePredator();
+    break;
+  case 4:
+    sim->setSmallMap(sim->worldSize() != 512);
+    for (const auto &b : sim->state())
+      previous[b.index] = b.position;
+    accumulator = 0;
     break;
   }
 }
@@ -164,16 +175,38 @@ EMSCRIPTEN_KEEPALIVE double statistic(int id) {
   case 1:
     return sim->crossingActive();
   case 2:
-    return sim->shoal;
+    return sim->parameter(ShoalEnabled);
   case 3:
     return simulationMs;
   case 5:
     return sim->neighbourBudget();
   case 6:
     return double(totalTicks);
+  case 7:
+    return sim->worldSize();
   default:
     return population;
   }
+}
+EMSCRIPTEN_KEEPALIVE const char *parameter_schema() {
+  static const std::string schema = parameterSchema();
+  return schema.c_str();
+}
+EMSCRIPTEN_KEEPALIVE double get_parameter(int id) {
+  return sim && id >= 0 && id < ParameterCount ? sim->parameter(Parameter(id))
+                                               : 0;
+}
+EMSCRIPTEN_KEEPALIVE double parameter_max(int id) {
+  return sim && id >= 0 && id < ParameterCount
+             ? sim->parameterMax(Parameter(id))
+             : 0;
+}
+EMSCRIPTEN_KEEPALIVE double set_parameter(int id, double value) {
+  if (sim && id >= 0 && id < ParameterCount && std::isfinite(value)) {
+    sim->setParameter(Parameter(id), float(value));
+    return sim->parameter(Parameter(id));
+  }
+  return 0;
 }
 EMSCRIPTEN_KEEPALIVE void resume() { accumulator = 0; }
 }
