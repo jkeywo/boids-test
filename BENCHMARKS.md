@@ -6,6 +6,8 @@ Native MSVC and Node/WASM each pass **13,854 checks**, including normalised mult
 
 Settings version 4 converts the previously map-local orbit radius from versions 1-3 into reference units once. Tests cover version-2 active-slot migration, version-3 orbit conversion, version-4 reload without double scaling, preset continuity and generic/flock separation. Historical smaller-map benchmarks below predate this uniform scaling.
 
+Chrome CPU/GPU and Firefox CPU suites pass. Short hardware RAF samples remain about 60 FPS at 1024-square backing resolution, including the 256-map scene (Intel Core Ultra 9 275HX / RTX 5090 Laptop GPU, Chrome 156 headless). [CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42640172831) pass for [3fabd7c](https://github.com/jkeywo/boids-test/commit/3fabd7c), including software-GPU pixel/force checks. Live CPU/GPU checks pass on all three maps: constant 920-square backing resolution, unchanged reference settings/populations, normalised orbit radius 400, finite wrapped GPU positions and normalised GPU speed 70 (maximum error below 0.000016), with no browser/GPU errors. Published WASM SHA-256 matches the tested build: `A723A2E68BBC254A7F8FCB79EB411D06783BE31B0FB6A6639E723B9CEDD2C105`; loader, app, GPU host and shaders match as well (text line endings normalised).
+
 ---
 
 # Predictive elliptical predator avoidance
