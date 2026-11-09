@@ -6,6 +6,10 @@ const buttons = Object.fromEntries(
 );
 const mapSize = document.querySelector("#map-size");
 const modeSelect = document.querySelector("#simulation-mode");
+const populationSlider = document.querySelector("#population-slider");
+let populationLevel = 0.5;
+const populationFor = (mode = activeMode) =>
+  Math.round((mode === "gpu" ? 10000 : 1000) * 10 ** (2 * populationLevel));
 const modeStatus = document.querySelector("#mode-status");
 const gpuCanvas = document.querySelector("#gpu-simulation");
 const canvasWrap = document.querySelector(".canvas-wrap");
@@ -18,6 +22,7 @@ async function setSimulationMode(requested) {
   const epoch = ++modeEpoch;
   if (requested !== "gpu") {
     activeMode = "cpu";
+    moduleInstance._set_population(populationFor("cpu"));
     modeLoading = false;
     canvas.hidden = false;
     gpuCanvas.hidden = true;
@@ -37,6 +42,7 @@ async function setSimulationMode(requested) {
       const { GPUBoids } = await import("./gpu.js");
       gpuEngine = await GPUBoids.create(gpuCanvas, parameterDefinitions, {
         settings: parameterValues,
+        population: () => populationFor("gpu"),
         worldSize: () => moduleInstance._statistic(7),
         predatorCount: () => moduleInstance._statistic(9),
         residentCount: () => moduleInstance._statistic(0),
@@ -71,6 +77,7 @@ async function setSimulationMode(requested) {
       });
     }
     if (epoch !== modeEpoch) return false;
+    gpuEngine.setPopulation(populationFor("gpu"));
     if (gpuEngine.lost)
       throw new Error("The GPU device is unavailable. Reload to retry.");
     activeMode = "gpu";
@@ -79,7 +86,7 @@ async function setSimulationMode(requested) {
     canvas.hidden = true;
     gpuCanvas.hidden = false;
     gpuEngine.resetClock();
-    modeStatus.textContent = "100,000 boids simulated on the GPU.";
+    modeStatus.textContent = "GPU simulation active.";
     refresh();
     resize();
     return true;
@@ -174,8 +181,8 @@ function buildParameterControls() {
         });
       } else {
         input.type = "range";
-        input.min = spec.min;
-        input.max = spec.max;
+        input.min = spec.log2 ? Math.log2(spec.min) : spec.min;
+        input.max = spec.log2 ? Math.log2(spec.max) : spec.max;
         input.step = spec.step;
       }
       const row = document.createElement("div");
@@ -199,7 +206,11 @@ function buildParameterControls() {
       () => {
         moduleInstance._set_parameter(
           spec.id,
-          spec.toggle ? Number(input.checked) : Number(input.value),
+          spec.toggle
+            ? Number(input.checked)
+            : spec.log2
+              ? 2 ** Number(input.value)
+              : Number(input.value),
         );
         refresh();
         scheduleSettingsSave();
@@ -234,6 +245,7 @@ function currentPreferences() {
 }
 function currentGenericPreferences() {
   return {
+    populationLevel,
     worldSize: moduleInstance._statistic(7),
     orbitCount: moduleInstance._statistic(0),
     parameters: scopedParameters(false),
@@ -279,6 +291,11 @@ function setOrbitCount(value) {
 }
 function applyPreferences(saved) {
   if (
+    typeof saved.populationLevel === "number" &&
+    Number.isFinite(saved.populationLevel)
+  )
+    populationLevel = Math.max(0, Math.min(1, saved.populationLevel));
+  if (
     [256, 512, 1024].includes(saved.worldSize) &&
     saved.worldSize !== moduleInstance._statistic(7)
   )
@@ -304,6 +321,11 @@ function normaliseSlot(saved, generic = false) {
   );
   if (!saved || typeof saved !== "object" || Array.isArray(saved)) return slot;
   if (generic) {
+    if (
+      typeof saved.populationLevel === "number" &&
+      Number.isFinite(saved.populationLevel)
+    )
+      slot.populationLevel = Math.max(0, Math.min(1, saved.populationLevel));
     if ([256, 512, 1024].includes(saved.worldSize)) {
       slot.worldSize = saved.worldSize;
     }
@@ -400,6 +422,7 @@ async function restoreSettings() {
     applyPreferences(settingsSlots[activeSlot]);
     settingsSlots[activeSlot] = currentPreferences();
     if (saved.mode === "gpu") await setSimulationMode("gpu");
+    else moduleInstance._set_population(populationFor("cpu"));
     if (saved.version !== 4 && !saveSettings()) return;
     settingsStatus.textContent = `Slot ${activeSlot + 1} restored.`;
   } catch {
@@ -461,10 +484,30 @@ function refresh() {
   modeSelect.disabled = !initialized || modeLoading;
   modeSelect.querySelector('[value="gpu"]').disabled = !navigator.gpu;
   if (!modeLoading) modeSelect.value = activeMode;
+  const population =
+    activeMode === "gpu"
+      ? gpuEngine?.count || populationFor("gpu")
+      : m._statistic(4);
   document.querySelector("#population-count").textContent =
-    activeMode === "gpu" ? "100,000" : "10,000";
-  document.title =
-    activeMode === "gpu" ? "Boids / 100,000 GPU" : "Boids / 10,000";
+    population.toLocaleString();
+  document.querySelector("#population-value").value =
+    population.toLocaleString();
+  populationSlider.value = populationLevel;
+  populationSlider.disabled = !initialized || modeLoading;
+  populationSlider.setAttribute(
+    "aria-valuetext",
+    population.toLocaleString() + " boids",
+  );
+  document
+    .querySelectorAll(".population-ticks span")
+    .forEach(
+      (span, i) =>
+        (span.textContent = (
+          (activeMode === "gpu" ? 10000 : 1000) *
+          10 ** i
+        ).toLocaleString()),
+    );
+  document.title = `Boids / ${population.toLocaleString()} ${activeMode.toUpperCase()}`;
   document.querySelector("#simulation-label").textContent =
     activeMode === "gpu"
       ? gpuEngine?.gpuMs != null
@@ -487,12 +530,33 @@ function refresh() {
   ][Math.round(colours["predator-mode"])];
   for (const { input, spec } of parameterWidgets.values()) {
     const value = m._get_parameter(spec.id);
-    input.disabled = !initialized;
+    const mode = Math.round(colours["predator-mode"]);
+    const shown =
+      spec.group !== "Predators" ||
+      ![
+        "orbit-radius",
+        "orbit-period",
+        "predator-speed",
+        "predator-turn-rate",
+        "predator-noise-scale",
+        "predator-noise-time",
+        "predator-hunt-radius",
+      ].includes(spec.name) ||
+      (["orbit-radius", "orbit-period"].includes(spec.name)
+        ? mode === 0
+        : spec.name === "predator-hunt-radius"
+          ? mode === 2
+          : mode !== 0);
+    if (!spec.toggle) input.closest(".parameter-row").hidden = !shown;
+    input.disabled = !initialized || !shown;
     if (spec.toggle) input.checked = value > 0;
     else if (spec.options) input.value = String(value);
     else {
-      input.max = m._parameter_max(spec.id);
-      input.value = value;
+      input.max = spec.log2
+        ? Math.log2(m._parameter_max(spec.id))
+        : m._parameter_max(spec.id);
+      input.value = spec.log2 ? Math.log2(value) : value;
+      if (spec.log2) input.setAttribute("aria-valuetext", `${value} swarms`);
       document.getElementById(input.id + "-value").value = formatParameter(
         spec,
         value,
@@ -524,7 +588,26 @@ window.boidsTest = {
     return activeSlot + 1;
   },
   get population() {
-    return activeMode === "gpu" ? 100000 : 10000;
+    return activeMode === "gpu"
+      ? gpuEngine.count
+      : moduleInstance._statistic(4);
+  },
+  get populationLevel() {
+    return populationLevel;
+  },
+  setPopulationLevel(value) {
+    populationLevel = Math.max(0, Math.min(1, Number(value)));
+    if (!Number.isFinite(populationLevel)) populationLevel = 0.5;
+    if (activeMode === "gpu") gpuEngine?.setPopulation(populationFor("gpu"));
+    else moduleInstance._set_population(populationFor("cpu"));
+    refresh();
+    scheduleSettingsSave();
+    return this.population;
+  },
+  get swappedBoids() {
+    return activeMode === "gpu"
+      ? gpuEngine.swappedBoids
+      : moduleInstance._statistic(12);
   },
   get cpuTicks() {
     return moduleInstance._statistic(6);
@@ -761,3 +844,8 @@ window.boidsTest = {
     console.error(error);
   }
 })();
+
+populationSlider.addEventListener("input", () =>
+  window.boidsTest.setPopulationLevel(Number(populationSlider.value)),
+);
+populationSlider.addEventListener("change", saveSettings);

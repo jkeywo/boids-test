@@ -4,7 +4,8 @@ struct Config {
   counts: vec4<u32>,
   misc: vec4<u32>,
   scale: vec4<f32>,
-  params: array<vec4<f32>, PARAMETER_VECTORS>
+  params: array<vec4<f32>, PARAMETER_VECTORS>,
+  operation: vec4<u32>
 }
 struct Boid {
   position: vec2<f32>,

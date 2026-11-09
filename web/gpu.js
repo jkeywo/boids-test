@@ -1,5 +1,5 @@
 // WebGPU boid state never crosses back to the CPU during normal simulation.
-const COUNT = 100000,
+const DEFAULT_COUNT = 100000,
   STRIDE = 32,
   MAX_STEPS = 4;
 const aligned = (n, alignment = 256) => Math.ceil(n / alignment) * alignment;
@@ -35,7 +35,7 @@ export class GPUBoids {
     this.canvas = canvas;
     this.definitions = definitions;
     this.parameterVectors = Math.ceil(definitions.length / 4);
-    this.configBytes = 64 + this.parameterVectors * 16;
+    this.configBytes = 80 + this.parameterVectors * 16;
     this.uniformStride = aligned(this.configBytes);
     this.bridge = bridge;
     this.device = device;
@@ -49,7 +49,12 @@ export class GPUBoids {
         "isFallbackAdapter",
       ].map((key) => [key, adapter.info?.[key]]),
     );
-    this.count = COUNT;
+    this.count = bridge.population?.() || DEFAULT_COUNT;
+    this.capacity = this.count;
+    this.spawnStart = 0;
+    this.swapRemainder = 0;
+    this.swapSerial = 0;
+    this.swappedBoids = 0;
     this.budget = 32;
     this.current = 0;
     this.ticks = 0;
@@ -100,8 +105,8 @@ export class GPUBoids {
     });
     this.states = [0, 1].map((i) =>
       d.createBuffer({
-        label: `100,000 boids ${i}`,
-        size: COUNT * STRIDE,
+        label: `Boid state ${i}`,
+        size: this.count * STRIDE,
         usage:
           GPUBufferUsage.STORAGE |
           GPUBufferUsage.COPY_SRC |
@@ -229,6 +234,7 @@ export class GPUBoids {
     });
     const entries = [
       "initialize",
+      "swapState",
       "rescale",
       "clearCells",
       "binBoids",
@@ -280,13 +286,13 @@ export class GPUBoids {
     this.world = this.bridge.worldSize();
     this.writeConfig(0, settings, 0, 0, 1);
     const encoder = d.createCommandEncoder();
-    this.dispatch(encoder, "initialize", 0, Math.ceil(COUNT / 128));
+    this.dispatch(encoder, "initialize", 0, Math.ceil(this.count / 128));
     encoder.copyBufferToBuffer(
       this.states[1],
       0,
       this.states[0],
       0,
-      COUNT * STRIDE,
+      this.count * STRIDE,
     );
     d.queue.submit([encoder.finish()]);
     await d.queue.onSubmittedWorkDone();
@@ -345,6 +351,59 @@ export class GPUBoids {
     this.buildGroups();
     old.destroy();
   }
+  setPopulation(wanted) {
+    this.resizeWorld(this.bridge.settings());
+    wanted = Math.max(10000, Math.min(1000000, Math.round(wanted)));
+    if (wanted === this.count) return;
+    const oldCount = this.count,
+      oldStates = this.states;
+    const encoder = this.device.createCommandEncoder();
+    if (wanted > this.capacity) {
+      this.capacity = Math.min(1000000, Math.max(wanted, this.capacity * 2));
+      this.states = [0, 1].map(() =>
+        this.device.createBuffer({
+          size: this.capacity * STRIDE,
+          usage:
+            GPUBufferUsage.STORAGE |
+            GPUBufferUsage.COPY_SRC |
+            GPUBufferUsage.COPY_DST,
+        }),
+      );
+      for (let i = 0; i < 2; i++)
+        encoder.copyBufferToBuffer(
+          oldStates[i],
+          0,
+          this.states[i],
+          0,
+          oldCount * STRIDE,
+        );
+      this.buildGroups();
+    }
+    this.count = wanted;
+    this.densityEpoch++;
+    this.lastDensityTick = -6;
+    if (wanted > oldCount) {
+      this.spawnStart = oldCount;
+      this.writeConfig(0, this.bridge.settings(), 0, 0);
+      this.dispatch(
+        encoder,
+        "initialize",
+        0,
+        Math.ceil((wanted - oldCount) / 128),
+      );
+      encoder.copyBufferToBuffer(
+        this.states[1 - this.current],
+        oldCount * STRIDE,
+        this.states[this.current],
+        oldCount * STRIDE,
+        (wanted - oldCount) * STRIDE,
+      );
+      this.spawnStart = 0;
+    }
+    this.device.queue.submit([encoder.finish()]);
+    if (oldStates !== this.states)
+      oldStates.forEach((buffer) => buffer.destroy());
+  }
   writeConfig(slot, settings, dt, alpha, ratio = 1) {
     const buffer = this.configArena,
       f = new Float32Array(buffer),
@@ -358,10 +417,13 @@ export class GPUBoids {
     while (side > 2 && world / side < radius) side /= 2;
     const predatorCount = this.bridge.predatorCount();
     f.set([world, dt, this.ticks / 60, alpha], 0);
-    u.set([COUNT, side, this.budget, predatorCount], 4);
+    u.set([this.count, side, this.budget, predatorCount], 4);
     const hunting =
       settings["predator-mode"] === 2 && this.bridge.residentCount() > 0;
-    u.set([this.ticks, (this.ticks * 7919) % COUNT, Number(hunting), 0], 8);
+    u.set(
+      [this.ticks, (this.ticks * 7919) % this.count, Number(hunting), 0],
+      8,
+    );
     const turn = ((settings["turn-rate"] * Math.PI) / 180) * dt;
     f[2] = Math.sin(turn * settings["shoal-turn"]);
     f.set(
@@ -383,6 +445,7 @@ export class GPUBoids {
       const spec = this.definitions.find((p) => p.name === name);
       f[16 + spec.id] = Math.cos((settings[name] * Math.PI) / 180);
     }
+    u.set([this.spawnStart, 0, 0, 0], 16 + this.parameterVectors * 4);
     this.device.queue.writeBuffer(
       this.uniform,
       slot * this.uniformStride,
@@ -433,13 +496,13 @@ export class GPUBoids {
     this.ensurePredators(this.bridge.predatorCount());
     this.writeConfig(0, settings, 0, 0, wanted / this.world);
     const encoder = this.device.createCommandEncoder();
-    this.dispatch(encoder, "rescale", 0, Math.ceil(COUNT / 128));
+    this.dispatch(encoder, "rescale", 0, Math.ceil(this.count / 128));
     encoder.copyBufferToBuffer(
       this.states[1 - this.current],
       0,
       this.states[this.current],
       0,
-      COUNT * STRIDE,
+      this.count * STRIDE,
     );
     this.device.queue.submit([encoder.finish()]);
     this.world = wanted;
@@ -499,6 +562,34 @@ export class GPUBoids {
         1 / 60,
         Math.max(0, this.accumulator * 60 - 1),
       );
+      if (settings["swarm-enabled"] && settings["swarm-swap-rate"] > 0) {
+        this.swapRemainder += settings["swarm-swap-rate"] / 120;
+        const pairs = Math.floor(this.swapRemainder + 1e-6);
+        this.swapRemainder -= pairs;
+        if (pairs > 0) {
+          const u = new Uint32Array(this.configArena),
+            half = Math.ceil(Math.ceil(Math.log2(this.count)) / 2);
+          u.set(
+            [0, pairs, Math.imul(++this.swapSerial, 0x9e3779b9) >>> 0, half],
+            16 + this.parameterVectors * 4,
+          );
+          this.device.queue.writeBuffer(
+            this.uniform,
+            steps * this.uniformStride,
+            this.configArena,
+          );
+          encoder.copyBufferToBuffer(
+            this.states[this.current],
+            0,
+            this.states[1 - this.current],
+            0,
+            this.count * STRIDE,
+          );
+          this.dispatch(encoder, "swapState", steps, Math.ceil(pairs / 128));
+          this.current = 1 - this.current;
+          this.swappedBoids += pairs * 2;
+        }
+      } else this.swapRemainder = 0;
       this.dispatch(
         encoder,
         "clearCells",
@@ -509,7 +600,7 @@ export class GPUBoids {
           : undefined,
       );
       if (config.radius > 0 || config.hunting)
-        this.dispatch(encoder, "binBoids", steps, Math.ceil(COUNT / 128));
+        this.dispatch(encoder, "binBoids", steps, Math.ceil(this.count / 128));
       if (config.radius > 0)
         this.dispatch(
           encoder,
@@ -531,7 +622,7 @@ export class GPUBoids {
         encoder,
         "advance",
         steps,
-        Math.ceil(COUNT / 128),
+        Math.ceil(this.count / 128),
         timing
           ? { querySet: this.queries, endOfPassWriteIndex: steps * 2 + 1 }
           : undefined,
@@ -586,7 +677,7 @@ export class GPUBoids {
       renderSlot * this.uniformStride,
       renderSlot * this.predatorStride,
     ]);
-    pass.draw(3, COUNT + this.bridge.predatorCount());
+    pass.draw(3, this.count + this.bridge.predatorCount());
     pass.end();
     if (timing) {
       encoder.resolveQuerySet(
@@ -680,7 +771,7 @@ export class GPUBoids {
   async snapshot() {
     await this.device.queue.onSubmittedWorkDone();
     const buffer = this.device.createBuffer({
-      size: COUNT * STRIDE,
+      size: this.count * STRIDE,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
     const encoder = this.device.createCommandEncoder();
@@ -689,7 +780,7 @@ export class GPUBoids {
       0,
       buffer,
       0,
-      COUNT * STRIDE,
+      this.count * STRIDE,
     );
     this.device.queue.submit([encoder.finish()]);
     await buffer.mapAsync(GPUMapMode.READ);
@@ -700,7 +791,8 @@ export class GPUBoids {
   }
   stats() {
     return {
-      population: COUNT,
+      population: this.count,
+      swappedBoids: this.swappedBoids,
       densityReads: this.densityReads,
       steps: this.completedTicks,
       submittedSteps: this.ticks,

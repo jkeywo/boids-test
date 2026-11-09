@@ -86,6 +86,7 @@ const server = http.createServer((req, res) => {
       timeout: 60000,
     });
     console.log("Simulation ready");
+    await require("./population-check.cjs")(page, "cpu");
     await require("./map-scale-check.cjs")(page);
     await require("./colour-check.cjs")(page, "#simulation");
     await require("./predator-check.cjs")(page);
@@ -364,7 +365,13 @@ const server = http.createServer((req, res) => {
             Number(input.min) + (Number(input.max) - Number(input.min)) * 0.63;
           input.dispatchEvent(new Event("input", { bubbles: true }));
           const actual = window.boidsTest.settings()[name];
-          if (Math.abs(Number(input.value) - actual) > 0.001)
+          if (
+            Math.abs(
+              (name === "swarm-count"
+                ? 2 ** Number(input.value)
+                : Number(input.value)) - actual,
+            ) > 0.001
+          )
             throw new Error("Slider did not apply: " + name);
           if (!document.getElementById(input.id + "-value").textContent)
             throw new Error("Missing slider output");
@@ -379,7 +386,7 @@ const server = http.createServer((req, res) => {
       document.querySelector("#parameter-controls").scrollTop = 0;
       return { sliders, toggles };
     });
-    assert.equal(controlReport.sliders, 37);
+    assert.equal(controlReport.sliders, 39);
     assert.equal(controlReport.toggles, 9);
     await page.selectOption("#map-size", "512");
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 512);

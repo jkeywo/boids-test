@@ -90,7 +90,11 @@ namespace boids {
   X(FleeSideRadius, "flee-side-radius", "Predator flee", "Side radius", "u",   \
     1, 256, 1, 50, false)                                                      \
   X(FleePrediction, "flee-prediction", "Predator flee", "Prediction time",     \
-    "s", 0, 3, .05, .5, false)
+    "s", 0, 3, .05, .5, false)                                                 \
+  X(SwarmCount, "swarm-count", "Swarm", "Number of swarms", "", 1, 512, 1, 1, \
+    false)                                                                     \
+  X(SwarmSwapRate, "swarm-swap-rate", "Swarm", "Swap rate", "boids/s", 0,      \
+    10000, .1, 0, false)
 enum Parameter {
 #define ENUM(id, ...) id,
   BOID_PARAMETERS(ENUM)
@@ -125,6 +129,8 @@ struct Parameters {
       return false;
     const auto &s = parameterSpecs[id];
     value = std::clamp(value, s.minimum, s.maximum);
+    if (id == SwarmCount)
+      value = std::exp2(std::round(std::log2(value)));
     values[id] = std::clamp(
         s.minimum + std::round((value - s.minimum) / s.step) * s.step,
         s.minimum, s.maximum);
@@ -144,6 +150,8 @@ inline std::string parameterSchema() {
             ",\"max\":" + std::to_string(s.maximum) +
             ",\"step\":" + std::to_string(s.step) +
             ",\"toggle\":" + (s.toggle ? "true" : "false");
+    if (i == SwarmCount)
+      json += ",\"log2\":true";
     if (i == PredatorMode)
       json += ",\"options\":[\"Orbit\",\"Random\",\"Hunt\"]";
     json += "}";

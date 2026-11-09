@@ -84,12 +84,44 @@ struct Alignment {
 struct Repulsion {
   Vec operator()(const Neighbours &n) const { return unit(n.separation); }
 };
+inline uint32_t swarmParent(uint32_t id, uint32_t roots = 1) {
+  return id < roots ? id
+                    : ((((id / roots - 1) >> 1) * roots) | (id & (roots - 1)));
+}
+// Keyed four-round Feistel permutation, cycle-walked into [0,count). Both
+// directions are bijections, allowing disjoint GPU swaps without atomics.
+inline uint32_t swapPermutation(uint32_t value, uint32_t count, uint32_t seed,
+                                bool inverse = false) {
+  uint32_t half = (std::bit_width(count - 1) + 1) / 2, mask = (1u << half) - 1;
+  do {
+    uint32_t left = value >> half, right = value & mask;
+    for (uint32_t i = 0; i < 4; ++i) {
+      const uint32_t round = inverse ? 3 - i : i;
+      uint32_t h = (inverse ? left : right) ^ seed ^ (round * 0x9e3779b9u);
+      h ^= h >> 16;
+      h *= 0x7feb352du;
+      h ^= h >> 15;
+      h *= 0x846ca68bu;
+      h ^= h >> 16;
+      const uint32_t next = (inverse ? right : left) ^ (h & mask);
+      if (inverse) {
+        right = left;
+        left = next;
+      } else {
+        left = right;
+        right = next;
+      }
+    }
+    value = (left << half) | right;
+  } while (value >= count);
+  return value;
+}
 struct Swarm {
-  Vec operator()(const Boid &b, const std::vector<Boid> &flock,
-                 float extent) const {
-    if (b.index <= 0)
+  Vec operator()(const Boid &b, const std::vector<Boid> &flock, float extent,
+                 uint32_t roots = 1) const {
+    if (uint32_t(b.index) < roots)
       return {};
-    const size_t parent = size_t((b.index - 1) >> 1);
+    const size_t parent = swarmParent(uint32_t(b.index), roots);
     return parent < flock.size()
                ? unit(delta(b.position, flock[parent].position, extent) *
                       (size / extent))
@@ -215,6 +247,10 @@ class Simulation {
   flecs::world world;
   flecs::query<Boid> query;
   std::vector<Boid> snapshot;
+  std::vector<flecs::entity> entities;
+  double swapRemainder = 0;
+  uint32_t swapSerial = 0;
+  uint64_t swappedBoids = 0;
   // Position/velocity are adjacent for four-wide transposed loads. Float IDs
   // are exact at this population and allow vector self/coincidence masks.
   struct NeighbourRecord {
@@ -270,6 +306,10 @@ public:
   PredatorThreat predatorThreat(const Predator &p) const {
     return Flee::predict(p, parameters, extent);
   }
+  void setPopulation(int count);
+  int populationCount() const { return int(snapshot.size()); }
+  void swapBoids(int a, int b);
+  uint64_t swaps() const { return swappedBoids; }
   void tick(float dt);
   void resetInterpolation();
   void writeRenderInstances(std::vector<float> &output, float alpha);

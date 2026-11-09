@@ -1,3 +1,25 @@
+# Live populations, mode-aware predator controls and swarm forests
+
+The Boids slider under Simulation mode uses `base * 10^(2t)` with t in [0,1], rounded to whole boids. CPU base is 1,000 and GPU base 10,000; midpoints are the existing 10,000/100,000 defaults, and endpoints reach 100,000 CPU / 1,000,000 GPU. The shared slider position is generic autosaved state, independent of flock slots. CPU Flecs entities grow/shrink live; GPU storage grows amortised, preserves both interpolation buffers and initialises only new tails. Resizing an inactive backend's map is applied before spawning additions. Active survivors and clocks continue without a restart.
+
+Predator rows now follow the movement dropdown: Orbit radius/period for Orbit; roaming speed/turn/noise for Random and Hunt's fallback search; hunt radius only for Hunt; crossing speed in every mode. Hidden rows retain their values. Swarm adds a 1-512 power-of-two count (default 1) and 0-10,000 boids/s swap rate in 0.1 increments (default 0). Low bits assign groups and roots 0 through S-1; the remaining bits form each binary tree. A swap exchanges two logical roles while retaining physical state and interpolation. The rate counts both participants, so pair frequency is half the displayed rate. Fractional budgets accrue per simulated tick. These two parameters are flock-preset settings.
+
+GPU swaps copy the current state once then overwrite disjoint selected pairs in a compute pass. A keyed Feistel permutation with cycle walking supplies unique random indices without atomics, races or individual boid readback in normal simulation. CPU swaps use the same permutation and physical-state semantics. Default rate zero skips the swap work.
+
+Validation: MSVC native and Node/WASM pass **61,161 checks**, including permutation bijections/inverses, root membership, growth to 100,000, survivor/predator continuity, interpolation and zero/fractional swap rates. Browser probes exercise every logarithmic anchor in both modes, reach one million on the GPU, compare surviving GPU records byte-for-byte, scan all live records for valid positions/velocities, check mode visibility and save/reload/preset behaviour. GPU tests compare all words of selected/unselected records after a swap and verify rate accounting. One-root and four-root forests both achieve >98% correct-parent alignment with neighbour rules disabled. Existing scaled rendering, wind/shoal, predator and layout suites pass.
+
+Hardware observations (normal RAF, 920-square backing resolution, Chrome 156 headless, Windows x64, Intel Core Ultra 9 275HX / RTX 5090 Laptop GPU):
+
+| Scenario | Boids | Completed FPS | Simulation Hz | Sampled GPU compute ms/tick |
+| --- | ---: | ---: | ---: | ---: |
+| CPU default flock | 100,000 | 37.14 | 36.14 | - |
+| GPU default flock | 1,000,000 | 59.72 | 60.00 | 1.705 |
+| GPU + 4 swarms + 10,000 boids/s swaps | 1,000,000 | 60.01 | 60.00 | 1.795 |
+
+Samples are 10 seconds, after 20 seconds CPU / 3 seconds GPU warm-up. CPU max-count work uses its minimum eight-neighbour budget. Under overload, the CPU browser loop limits catch-up to one fixed tick per display frame; this improved max-count display responsiveness from approximately 10 to 37 FPS in the local observation while retaining the requested population. The initial CPU neighbour budget also adapts immediately to population size. These are device-specific measurements: **the CPU maximum does not reach 60 FPS on this machine**. Raw measurements: [benchmarks/population-limits.json](benchmarks/population-limits.json). Defaults remain at their previous counts and around 60 FPS.
+
+---
+
 # Uniform map scaling
 
 The 1024, 512 and 256 maps now use spatial factors 1, 0.5 and 0.25 throughout CPU and GPU simulation/rendering. Slider/preset values stay in 1024-map reference units; native parameter evaluation and GPU uniform packing convert distance/speed units locally. Positions and velocities rescale on map switches. Flock, flee, hunt and orbit radii; wind/random noise scales; all movement/prediction speeds; spawn/exit margins; and boid/predator glyphs have consistent screen dimensions. Angles, durations, weights and populations are unchanged. Repulsion regularisation and coincidence tolerances scale with distance squared, preserving force balance. The canvas backing resolution is now independent of map extent, capped at 1024 squared.

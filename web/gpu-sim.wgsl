@@ -9,6 +9,7 @@ struct Config {
   scale: vec4<f32>,
   // map-rescale ratio, base turn cosine/sine, boosted turn cosine
   params: array<vec4<f32>, PARAMETER_VECTORS>,
+  operation: vec4<u32>, // spawn start, swap pairs, permutation seed, halfBits bits
 }
 struct Boid {
   position: vec2<f32>,
@@ -173,12 +174,33 @@ fn boidColour(velocity: vec2<f32>, boost: f32) -> u32 {
   return pack4x8unorm(vec4(0.86*mix(vec3(1.0), rgb, vec3(0.73)), 1.0));
 }
 @compute @workgroup_size(128) fn initialize(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let id = gid.x;
-  if (id>=cfg.counts.x) {
+  let id = gid.x+cfg.operation.x;
+  if (id>=cfg.counts.x || id<cfg.operation.x) {
     return;
   }
   let angle = random(id*3u+3u)*2.0*PI;
   stateOut.values[id] = Boid(vec2(random(id*3u+1u), random(id*3u+2u))*cfg.data.x, vec2(cos(angle), sin(angle))*p(P_SPEED), 0, 0, 1u, boidColour(vec2(cos(angle),sin(angle)),0));
+}
+fn permutation(input: u32, inverse: bool) -> u32 {
+  let halfBits=cfg.operation.w;let mask=(1u<<halfBits)-1u;
+  var value=input;
+  loop {
+    var left=value>>halfBits;var right=value&mask;
+    for(var i=0u;i<4u;i++) {
+      let round=select(i,3u-i,inverse);
+      let h=hash(select(right,left,inverse)^cfg.operation.z^(round*0x9e3779b9u))&mask;
+      let next=select(left,right,inverse)^h;
+      if(inverse){right=left;left=next;}else{left=right;right=next;}
+    }
+    value=(left<<halfBits)|right;
+    if(value<cfg.counts.x){break;}
+  }
+  return value;
+}
+@compute @workgroup_size(128) fn swapState(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let pair=gid.x;if(pair>=cfg.operation.y){return;}
+  let a=permutation(pair*2u,false);let b=permutation(pair*2u+1u,false);
+  stateOut.values[a]=stateIn.values[b];stateOut.values[b]=stateIn.values[a];
 }
 @compute @workgroup_size(128) fn rescale(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = gid.x;
@@ -363,8 +385,9 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
   }
   var desired = unit(offset/mapScale)*p(P_COHESION_WEIGHT)+unit(velocity/mapScale)*p(P_ALIGNMENT_WEIGHT)+unit(separation)*p(P_REPULSION_WEIGHT);
   // Binary-tree links: 1/2 follow 0, 3/4 follow 1. Root 0 has no parent.
-  if (id > 0u && p(P_SWARM_ENABLED)>0.0 && p(P_SWARM_WEIGHT)>0.0) {
-    let parent = (id - 1u) >> 1u;
+  if (id >= u32(p(P_SWARM_COUNT)) && p(P_SWARM_ENABLED)>0.0 && p(P_SWARM_WEIGHT)>0.0) {
+    let roots=u32(p(P_SWARM_COUNT));
+    let parent = (((id/roots-1u)>>1u)*roots)|(id&(roots-1u));
     desired += unit(difference(b.position, stateIn.values[parent].position)/mapScale)*p(P_SWARM_WEIGHT);
   }
   if (p(P_FLEE_ENABLED)>0.0&&p(P_FLEE_WEIGHT)>0.0) {

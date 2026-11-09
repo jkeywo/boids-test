@@ -119,13 +119,14 @@ EMSCRIPTEN_KEEPALIVE void frame(double dt) {
   accumulator += std::clamp(dt, 0., .1);
   int steps = 0;
   double begin = emscripten_get_now();
-  while (accumulator >= 1. / 60 && steps < 4) {
+  const int maxSteps = simulationMs > 1000.f / 60 ? 1 : 4;
+  while (accumulator >= 1. / 60 && steps < maxSteps) {
     sim->tick(1.f / 60);
     accumulator -= 1. / 60;
     ++steps;
     ++totalTicks;
   }
-  if (steps == 4)
+  if (steps == maxSteps)
     accumulator = std::fmod(accumulator, 1. / 60);
   if (steps) {
     const float elapsedMs = float(emscripten_get_now() - begin);
@@ -225,9 +226,27 @@ EMSCRIPTEN_KEEPALIVE double statistic(int id) {
     return double(sim->predators.size());
   case 10:
     return sim->huntDensityTotal();
+  case 12:
+    return double(sim->swaps());
   default:
-    return population;
+    return sim->populationCount();
   }
+}
+EMSCRIPTEN_KEEPALIVE int set_population(int count) {
+  if (!sim)
+    return 0;
+  sim->setPopulation(std::clamp(count, 1000, 100000));
+#ifndef BOIDS_PROFILE
+  quality = {};
+  const int desired =
+      std::clamp(candidateBudget * population / sim->populationCount(), 8,
+                 candidateBudget);
+  while (quality.level < 5 &&
+         NeighbourBudgetController::levels[quality.level] > desired)
+    ++quality.level;
+  sim->setNeighbourBudget(NeighbourBudgetController::levels[quality.level]);
+#endif
+  return sim->populationCount();
 }
 EMSCRIPTEN_KEEPALIVE int set_world_size(int width) {
   if (!sim || !sim->setWorldSize(float(width)))

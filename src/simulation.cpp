@@ -32,19 +32,50 @@ Simulation::Simulation(int count)
   predatorThreats.reserve(32);
   for (auto &cell : predatorCells)
     cell.reserve(16);
-  for (int i = 0; i < count; ++i) {
-    float a = random() * 2 * pi;
-    world.entity().set<Boid>(
-        {{random() * extent, random() * extent},
-         {std::cos(a) * parameters[Speed], std::sin(a) * parameters[Speed]},
-         a,
-         0,
-         0,
-         true,
-         i});
-  }
+  snapshot.clear();
+  packed.clear();
+  previousPositions.clear();
+  setPopulation(count);
   resetInterpolation();
   configureGrid();
+}
+void Simulation::setPopulation(int count) {
+  count = std::clamp(count, 0, 100000);
+  while (int(entities.size()) > count) {
+    entities.back().destruct();
+    entities.pop_back();
+  }
+  const int old = int(entities.size());
+  snapshot.resize(count);
+  packed.resize(count);
+  previousPositions.resize(count);
+  for (int i = old; i < count; ++i) {
+    const float heading = random() * 2 * pi;
+    const Vec position{random() * extent, random() * extent};
+    entities.push_back(
+        world.entity().set<Boid>({position,
+                                  {std::cos(heading) * parameters[Speed],
+                                   std::sin(heading) * parameters[Speed]},
+                                  heading,
+                                  0,
+                                  0,
+                                  true,
+                                  i}));
+    previousPositions[i] = position;
+  }
+  clearHuntDensity();
+}
+void Simulation::swapBoids(int a, int b) {
+  if (a == b || a < 0 || b < 0 || a >= populationCount() ||
+      b >= populationCount())
+    return;
+  auto &first = entities[a].get_mut<Boid>(),
+       &second = entities[b].get_mut<Boid>();
+  std::swap(first, second);
+  first.index = a;
+  second.index = b;
+  std::swap(previousPositions[a], previousPositions[b]);
+  swappedBoids += 2;
 }
 void Simulation::configureGrid() {
   perceptionRadius = 0;
@@ -65,6 +96,9 @@ bool Simulation::setParameter(Parameter id, float value) {
   if (id == ShoalThreshold || id == ShoalRearm)
     parameters.values[ShoalRearm] =
         std::min(parameters[ShoalRearm], parameters[ShoalThreshold] - 1);
+  if ((id == SwarmEnabled && !parameters[id]) ||
+      (id == SwarmSwapRate && !parameters[id]))
+    swapRemainder = 0;
   if (id == ShoalEnabled && !parameters[id])
     query.each([](Boid &b) {
       b.boost = 0;
@@ -444,6 +478,22 @@ void Simulation::tick(float dt) {
   profileMs[1] += profileNow() - stamp;
   stamp = profileNow();
 #endif
+  if (parameters[SwarmEnabled] && parameters[SwarmSwapRate] > 0 &&
+      populationCount() > 1) {
+    swapRemainder += double(parameters[SwarmSwapRate]) * dt * .5;
+    int pairs = int(std::floor(swapRemainder + 1e-6));
+    swapRemainder -= pairs;
+    if (pairs > 0) {
+      const uint32_t seed = ++swapSerial * 0x9e3779b9u;
+      for (int i = 0; i < pairs; ++i)
+        swapBoids(
+            int(swapPermutation(uint32_t(i * 2) % uint32_t(populationCount()),
+                                uint32_t(populationCount()), seed)),
+            int(swapPermutation(uint32_t(i * 2 + 1) %
+                                    uint32_t(populationCount()),
+                                uint32_t(populationCount()), seed)));
+    }
+  }
   const bool swarm = parameters[SwarmEnabled] && parameters[SwarmWeight] > 0;
   if (perceptionRadius > 0)
     buildGrid();
@@ -466,7 +516,8 @@ void Simulation::tick(float dt) {
                   Alignment{}(n)*parameters[AlignmentWeight] +
                   Repulsion{}(n)*parameters[RepulsionWeight];
     if (swarm)
-      desired += Swarm{}(snapshot[b.index], snapshot, extent) *
+      desired += Swarm{}(snapshot[b.index], snapshot, extent,
+                         uint32_t(parameters[SwarmCount])) *
                  parameters[SwarmWeight];
     if (parameters[FleeEnabled] && parameters[FleeWeight] > 0)
       desired +=

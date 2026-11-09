@@ -233,6 +233,82 @@ void mapScaleTests() {
         "round trips never double-scale settings");
 }
 
+void populationAndSwarmTests() {
+  for (uint32_t n : {2u, 3u, 127u, 1000u, 10000u}) {
+    std::vector<bool> seen(n);
+    for (uint32_t i = 0; i < n; ++i) {
+      const auto mapped = swapPermutation(i, n, 0x12345678u);
+      check(mapped < n && !seen[mapped],
+            "swap permutation is a bijection for non-power-of-two populations");
+      seen[mapped] = true;
+      check(swapPermutation(mapped, n, 0x12345678u, true) == i,
+            "swap permutation inverse returns original index");
+    }
+  }
+  for (uint32_t roots : {1u, 2u, 4u, 16u, 1024u})
+    for (uint32_t id = 0; id < 5000; ++id) {
+      uint32_t parent = swarmParent(id, roots);
+      check(id < roots
+                ? parent == id
+                : parent < id && (parent & (roots - 1)) == (id & (roots - 1)),
+            "binary forests preserve low-bit swarm membership and distinct "
+            "roots");
+    }
+  Parameters settings;
+  settings.set(SwarmCount, 3);
+  check(settings[SwarmCount] == 4, "swarm count snaps to a power of two");
+  Simulation live(32);
+  live.setWorldSize(256);
+  live.addPredator();
+  const auto before = live.state();
+  const auto predator = live.predators[0];
+  live.setPopulation(100000);
+  const auto large = live.state();
+  check(large.size() == 100000, "CPU live growth reaches 100000");
+  for (int i = 0; i < 32; i++)
+    check(length2(large[i].position - before[i].position) == 0 &&
+              length2(large[i].velocity - before[i].velocity) == 0,
+          "population growth preserves survivors");
+  check(live.predators[0].identity == predator.identity &&
+            length2(live.predators[0].position - predator.position) == 0,
+        "population growth preserves predator state");
+  live.setPopulation(1000);
+  check(live.populationCount() == 1000, "CPU live shrink reaches 1000");
+  const auto priorSwap = live.state();
+  live.swapBoids(2, 17);
+  const auto after = live.state();
+  check(length2(after[2].position - priorSwap[17].position) == 0 &&
+            length2(after[17].velocity - priorSwap[2].velocity) == 0 &&
+            after[2].index == 2 && after[17].index == 17,
+        "swaps exchange logical indices with physical state intact");
+  std::vector<float> instances;
+  live.writeRenderInstances(instances, 0);
+  check(near(instances[2 * 6], after[2].position.x) &&
+            near(instances[17 * 6 + 1], after[17].position.y),
+        "swap interpolation follows the same physical boids");
+  for (auto id :
+       {CohesionEnabled, AlignmentEnabled, RepulsionEnabled, FleeEnabled})
+    live.setParameter(id, 0);
+  live.setParameter(SwarmEnabled, 1);
+  live.setParameter(SwarmWeight, 0);
+  live.setParameter(SwarmSwapRate, 120);
+  const auto initial = live.swaps();
+  for (int i = 0; i < 60; i++)
+    live.tick(1.f / 60);
+  check(live.swaps() - initial == 120,
+        "swap rate counts participating boids per second");
+  live.setParameter(SwarmSwapRate, 0);
+  const auto stopped = live.swaps();
+  for (int i = 0; i < 60; i++)
+    live.tick(1.f / 60);
+  check(live.swaps() == stopped, "zero swap rate disables index changes");
+  live.setParameter(SwarmSwapRate, .5f);
+  for (int i = 0; i < 240; i++)
+    live.tick(1.f / 60);
+  check(live.swaps() == stopped + 2,
+        "fractional swap rates accrue over multiple seconds");
+}
+
 void tuningTests() {
   Parameters settings;
   for (int id = 0; id < ParameterCount; ++id) {
@@ -729,6 +805,7 @@ int main() {
               boid.position.y >= 0 && boid.position.y < 256 &&
               std::isfinite(boid.position.y),
           "dense 256 cluster stable at maximum interaction radius");
+  populationAndSwarmTests();
   mapScaleTests();
   predictedEllipseTests();
   neighbourReferenceTests();

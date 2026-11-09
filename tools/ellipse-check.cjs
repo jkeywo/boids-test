@@ -171,6 +171,76 @@ module.exports = async function checkEllipse(page) {
           );
         maps.push({ size, uniformValid, ...verify(scaled, after, 1 / scale) });
       }
+      // Apply disjoint random index swaps and compare every storage word.
+      const oldSwap = new Uint32Array(await engine.snapshot()),
+        pairs = 64,
+        seed = 0x12345678;
+      const permute = (input) => {
+        const half = Math.ceil(Math.ceil(Math.log2(engine.count)) / 2),
+          mask = (1 << half) - 1;
+        let value = input;
+        do {
+          let left = value >>> half,
+            right = value & mask;
+          for (let round = 0; round < 4; round++) {
+            let h = (right ^ seed ^ Math.imul(round, 0x9e3779b9)) >>> 0;
+            h ^= h >>> 16;
+            h = Math.imul(h, 0x7feb352d);
+            h ^= h >>> 15;
+            h = Math.imul(h, 0x846ca68b);
+            h ^= h >>> 16;
+            const next = left ^ (h & mask);
+            left = right;
+            right = next;
+          }
+          value = (left << half) | right;
+        } while (value >= engine.count);
+        return value;
+      };
+      const sources = new Map();
+      for (let i = 0; i < pairs; i++) {
+        const a = permute(i * 2),
+          b = permute(i * 2 + 1);
+        sources.set(a, b);
+        sources.set(b, a);
+      }
+      engine.writeConfig(0, settings, 0, 0);
+      new Uint32Array(engine.configArena).set(
+        [0, pairs, seed, Math.ceil(Math.ceil(Math.log2(engine.count)) / 2)],
+        16 + engine.parameterVectors * 4,
+      );
+      engine.device.queue.writeBuffer(engine.uniform, 0, engine.configArena);
+      const swapEncoder = engine.device.createCommandEncoder();
+      swapEncoder.copyBufferToBuffer(
+        engine.states[engine.current],
+        0,
+        engine.states[1 - engine.current],
+        0,
+        engine.count * 32,
+      );
+      engine.dispatch(swapEncoder, "swapState", 0, Math.ceil(pairs / 128));
+      engine.current = 1 - engine.current;
+      engine.device.queue.submit([swapEncoder.finish()]);
+      const swapped = new Uint32Array(await engine.snapshot());
+      let swapErrors = 0;
+      for (let id = 0; id < engine.count; id++) {
+        const source = sources.get(id) ?? id;
+        for (let word = 0; word < 8; word++)
+          if (swapped[id * 8 + word] !== oldSwap[source * 8 + word])
+            swapErrors++;
+      }
+      settings["flee-enabled"] = 0;
+      settings["swarm-enabled"] = 1;
+      settings["swarm-weight"] = 0;
+      settings["swarm-swap-rate"] = 120;
+      engine.resetClock();
+      engine.frame(1 / 60);
+      await engine.device.queue.onSubmittedWorkDone();
+      const counted = engine.swappedBoids;
+      settings["swarm-swap-rate"] = 0;
+      engine.frame(1 / 60);
+      await engine.device.queue.onSubmittedWorkDone();
+      const rateValid = counted === 2 && engine.swappedBoids === 2;
       // Read actual rasterised sprites at a fixed backing resolution. All other
       // boids overlap in the corner so the central boid/predator crops are isolated.
       canvas.width = canvas.height = 1024;
@@ -231,12 +301,21 @@ module.exports = async function checkEllipse(page) {
         read.destroy();
         await engine.device.queue.onSubmittedWorkDone();
       }
-      return { ...maps[0], maps, pixels };
+      return { ...maps[0], maps, pixels, swapErrors, rateValid };
     } finally {
       engine.device.destroy();
       canvas.remove();
     }
   });
+  assert.equal(
+    result.swapErrors,
+    0,
+    "GPU swaps preserve every boid word and leave unselected boids untouched",
+  );
+  assert(
+    result.rateValid,
+    "GPU swap-rate budget counts both participants and stops at zero",
+  );
   for (const map of result.maps) {
     assert.equal(map.mismatches, 0, JSON.stringify(map));
     assert(map.uniformValid, JSON.stringify(map));
