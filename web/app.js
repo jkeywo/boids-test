@@ -5,6 +5,79 @@ const buttons = Object.fromEntries(
   ["send", "add", "remove"].map((id) => [id, document.getElementById(id)]),
 );
 const mapSize = document.querySelector("#map-size");
+const modeSelect = document.querySelector("#simulation-mode");
+const modeStatus = document.querySelector("#mode-status");
+const gpuCanvas = document.querySelector("#gpu-simulation");
+const canvasWrap = document.querySelector(".canvas-wrap");
+let activeMode = "cpu",
+  gpuEngine = null,
+  modeEpoch = 0,
+  modeLoading = false,
+  initialized = false;
+async function setSimulationMode(requested) {
+  const epoch = ++modeEpoch;
+  if (requested !== "gpu") {
+    activeMode = "cpu";
+    modeLoading = false;
+    canvas.hidden = false;
+    gpuCanvas.hidden = true;
+    moduleInstance._resume();
+    gpuEngine?.resetClock();
+    modeStatus.textContent = "CPU simulation active.";
+    refresh();
+    resize();
+    return true;
+  }
+  modeLoading = true;
+  modeSelect.value = "gpu";
+  modeSelect.disabled = true;
+  modeStatus.textContent = "Preparing GPU simulation...";
+  try {
+    if (!gpuEngine) {
+      const { GPUBoids } = await import("./gpu.js");
+      gpuEngine = await GPUBoids.create(gpuCanvas, parameterDefinitions, {
+        settings: parameterValues,
+        worldSize: () => moduleInstance._statistic(7),
+        predatorCount: () => moduleInstance._statistic(9),
+        predator: (i) => ({
+          x: moduleInstance._predator_value(i, 0),
+          y: moduleInstance._predator_value(i, 1),
+          heading: moduleInstance._predator_value(i, 2),
+        }),
+        step: (dt) => moduleInstance._gpu_control_step(dt),
+        onError: (message) => {
+          setSimulationMode("cpu");
+          modeStatus.textContent = "GPU mode stopped: " + message;
+        },
+      });
+    }
+    if (epoch !== modeEpoch) return false;
+    if (gpuEngine.lost)
+      throw new Error("The GPU device is unavailable. Reload to retry.");
+    activeMode = "gpu";
+    modeLoading = false;
+    canvas.hidden = true;
+    gpuCanvas.hidden = false;
+    gpuEngine.resetClock();
+    modeStatus.textContent = "100,000 boids simulated on the GPU.";
+    refresh();
+    resize();
+    return true;
+  } catch (error) {
+    if (epoch !== modeEpoch) return false;
+    activeMode = "cpu";
+    modeLoading = false;
+    canvas.hidden = false;
+    gpuCanvas.hidden = true;
+    modeStatus.textContent = "GPU mode unavailable: " + error.message;
+    refresh();
+    resize();
+    return false;
+  }
+}
+modeSelect.addEventListener("change", async () => {
+  if (await setSimulationMode(modeSelect.value)) saveSettings();
+});
 const resetButton = document.querySelector("#reset-defaults");
 const settingsStatus = document.querySelector("#settings-status");
 const SETTINGS_KEY = "boids-test.settings.v1";
@@ -40,6 +113,7 @@ function buildParameterControls() {
       groups.set(spec.group, group);
     }
     const input = document.createElement("input");
+    input.disabled = true;
     input.id = "param-" + spec.name;
     input.dataset.parameter = spec.name;
     if (spec.toggle) {
@@ -88,6 +162,7 @@ function parameterValues() {
 function currentPreferences() {
   return {
     version: 1,
+    mode: activeMode,
     worldSize: moduleInstance._statistic(7),
     orbitCount: moduleInstance._statistic(0),
     parameters: parameterValues(),
@@ -136,7 +211,7 @@ function applyPreferences(saved) {
   }
   if (Number.isInteger(saved.orbitCount)) setOrbitCount(saved.orbitCount);
 }
-function restoreSettings() {
+async function restoreSettings() {
   let raw;
   try {
     raw = localStorage.getItem(SETTINGS_KEY);
@@ -155,6 +230,7 @@ function restoreSettings() {
     )
       return;
     applyPreferences(saved);
+    if (saved.mode === "gpu") await setSimulationMode("gpu");
     settingsStatus.textContent = "Saved settings restored.";
   } catch {
     settingsStatus.textContent =
@@ -163,6 +239,7 @@ function restoreSettings() {
 }
 function resetDefaults() {
   cancelPendingSave();
+  setSimulationMode("cpu");
   moduleInstance._command(5);
   applyPreferences(factorySettings);
   refresh();
@@ -181,7 +258,10 @@ window.addEventListener("pagehide", () => {
 const frameTimes = [];
 const tickTimes = [];
 let measuring = false;
-let initialTicks = 0,
+let initialFrames = 0,
+  initialTime = 0,
+  initialGpuMs = [],
+  initialTicks = 0,
   minBudget = 48,
   maxBudget = 8;
 function resize() {
@@ -189,28 +269,49 @@ function resize() {
     1,
     Math.min(
       moduleInstance ? moduleInstance._statistic(7) : 1024,
-      Math.round(
-        canvas.getBoundingClientRect().width * window.devicePixelRatio,
-      ),
+      Math.round(canvasWrap.clientWidth * window.devicePixelRatio),
     ),
   );
   canvas.width = width;
   canvas.height = width;
+  gpuCanvas.width = width;
+  gpuCanvas.height = width;
 }
-new ResizeObserver(resize).observe(canvas);
+new ResizeObserver(resize).observe(canvasWrap);
 function refresh() {
   const m = moduleInstance,
     count = m._statistic(0),
     width = m._statistic(7);
   document.getElementById("count").value = count;
-  buttons.send.disabled = false;
-  buttons.add.disabled = count >= 16;
-  buttons.remove.disabled = count === 0;
+  buttons.send.disabled = !initialized;
+  buttons.add.disabled = !initialized || count >= 16;
+  buttons.remove.disabled = !initialized || count === 0;
   const crossing = m._statistic(8);
   document.querySelector("#crossing-status").textContent =
     `Each click launches another predator. ${crossing} active.`;
-  mapSize.disabled = false;
-  resetButton.disabled = false;
+  mapSize.disabled = !initialized;
+  resetButton.disabled = !initialized;
+  modeSelect.disabled = !initialized || modeLoading;
+  modeSelect.querySelector('[value="gpu"]').disabled = !navigator.gpu;
+  if (!modeLoading) modeSelect.value = activeMode;
+  document.querySelector("#population-count").textContent =
+    activeMode === "gpu" ? "100,000" : "10,000";
+  document.querySelector("#backend-caption").textContent =
+    activeMode === "gpu"
+      ? "WebGPU \u00b7 WGSL"
+      : "C++ \u00b7 WASM \u00b7 WebGL 2";
+  document.title =
+    activeMode === "gpu" ? "Boids / 100,000 GPU" : "Boids / 10,000";
+  document.querySelector("#simulation-label").textContent =
+    activeMode === "gpu"
+      ? gpuEngine?.gpuMs != null
+        ? "GPU COMPUTE"
+        : "CPU SUBMIT"
+      : "SIMULATION";
+  document.querySelector("#simulation-unit").textContent =
+    activeMode === "gpu" && gpuEngine?.gpuMs == null
+      ? " ms / frame"
+      : " ms / tick";
   mapSize.value = String(width);
   document.querySelector("#world-caption").textContent =
     `${width} x ${width} / TOROIDAL WORLD`;
@@ -221,6 +322,7 @@ function refresh() {
     `Circling ${m._get_parameter(orbitSpec.id).toFixed(0)} units from the centre.`;
   for (const { input, spec } of parameterWidgets.values()) {
     const value = m._get_parameter(spec.id);
+    input.disabled = !initialized;
     if (spec.toggle) input.checked = value > 0;
     else {
       input.max = m._parameter_max(spec.id);
@@ -247,6 +349,22 @@ mapSize.addEventListener("change", () => {
 });
 window.boidsTest = {
   ready: false,
+  get mode() {
+    return activeMode;
+  },
+  get population() {
+    return activeMode === "gpu" ? 100000 : 10000;
+  },
+  get cpuTicks() {
+    return moduleInstance._statistic(6);
+  },
+  gpuStats() {
+    return gpuEngine?.stats() || null;
+  },
+  gpuSnapshot() {
+    if (activeMode !== "gpu") throw new Error("Select GPU mode first.");
+    return gpuEngine.snapshot();
+  },
   get worldSize() {
     return moduleInstance._statistic(7);
   },
@@ -271,7 +389,13 @@ window.boidsTest = {
     frameTimes.length = 0;
     tickTimes.length = 0;
     measuring = true;
-    initialTicks = moduleInstance._statistic(6);
+    initialTicks =
+      activeMode === "gpu"
+        ? gpuEngine.completedTicks
+        : moduleInstance._statistic(6);
+    initialFrames = activeMode === "gpu" ? gpuEngine.completedFrames : 0;
+    initialTime = performance.now();
+    initialGpuMs = [];
     minBudget = 48;
     maxBudget = 8;
   },
@@ -283,19 +407,30 @@ window.boidsTest = {
     return {
       frames: sorted.length,
       meanFps:
-        1000 / (frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length),
+        activeMode === "gpu"
+          ? ((gpuEngine.completedFrames - initialFrames) * 1000) /
+            (performance.now() - initialTime)
+          : 1000 / (frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length),
       p50ms: quantile(0.5),
       p95ms: quantile(0.95),
       p99ms: quantile(0.99),
       meanTickMs: tickTimes.reduce((a, b) => a + b, 0) / tickTimes.length,
       simulationHz:
-        (moduleInstance._statistic(6) - initialTicks) /
+        ((activeMode === "gpu"
+          ? gpuEngine.completedTicks
+          : moduleInstance._statistic(6)) -
+          initialTicks) /
         (frameTimes.reduce((a, b) => a + b, 0) / 1000),
       minNeighbourBudget: minBudget,
       maxNeighbourBudget: maxBudget,
       renderResolution: canvas.width,
       userAgent: navigator.userAgent,
-      population: 10000,
+      population: this.population,
+      backend: activeMode === "gpu" ? "WebGPU compute" : "C++/WASM + WebGL 2",
+      gpu: activeMode === "gpu" ? gpuEngine.stats() : null,
+      meanGpuComputeMs: initialGpuMs.length
+        ? initialGpuMs.reduce((a, b) => a + b, 0) / initialGpuMs.length
+        : null,
       worldSize: moduleInstance._statistic(7),
       crossingPredators: this.crossingCount,
       totalPredators: this.predatorCount,
@@ -315,18 +450,24 @@ window.boidsTest = {
       );
     buildParameterControls();
     factorySettings = currentPreferences();
-    restoreSettings();
+    await restoreSettings();
+    initialized = true;
+    if (!navigator.gpu)
+      modeStatus.textContent =
+        "CPU active. GPU mode needs a WebGPU-capable browser.";
     status.hidden = true;
     refresh();
     resize();
     window.boidsTest.ready = true;
     let previous = 0,
       elapsed = 0,
-      frames = 0;
+      frames = 0,
+      lastGpuFrames = 0;
     document.addEventListener("visibilitychange", () => {
       if (document.hidden && saveTimer !== null) saveSettings();
       previous = 0;
       moduleInstance._resume();
+      gpuEngine?.resetClock();
     });
     canvas.addEventListener("webglcontextlost", (event) => {
       event.preventDefault();
@@ -339,25 +480,44 @@ window.boidsTest = {
       if (document.hidden) return;
       const dt = previous ? (now - previous) / 1000 : 0;
       previous = now;
-      moduleInstance._frame(dt);
+      if (activeMode === "gpu") gpuEngine.frame(dt);
+      else moduleInstance._frame(dt);
       if (dt > 0) {
         elapsed += dt;
-        frames++;
+        if (activeMode === "gpu") {
+          const completed = gpuEngine.completedFrames;
+          frames += Math.max(0, completed - lastGpuFrames);
+          lastGpuFrames = completed;
+        } else {
+          frames++;
+          lastGpuFrames = gpuEngine?.completedFrames || 0;
+        }
         if (measuring) {
           frameTimes.push(dt * 1000);
-          const budget = moduleInstance._statistic(5);
+          const budget =
+            activeMode === "gpu"
+              ? gpuEngine.budget
+              : moduleInstance._statistic(5);
           minBudget = Math.min(minBudget, budget);
           maxBudget = Math.max(maxBudget, budget);
-          tickTimes.push(moduleInstance._statistic(3));
+          tickTimes.push(
+            activeMode === "gpu"
+              ? gpuEngine.submitMs
+              : moduleInstance._statistic(3),
+          );
+          if (activeMode === "gpu" && gpuEngine.gpuMs != null)
+            initialGpuMs.push(gpuEngine.gpuMs);
         }
       }
       if (elapsed >= 0.5) {
         document.getElementById("fps").textContent = Math.round(
           frames / elapsed,
         );
-        document.getElementById("sim-ms").textContent = moduleInstance
-          ._statistic(3)
-          .toFixed(1);
+        document.getElementById("sim-ms").textContent = (
+          activeMode === "gpu"
+            ? (gpuEngine.gpuMs ?? gpuEngine.submitMs)
+            : moduleInstance._statistic(3)
+        ).toFixed(2);
         elapsed = 0;
         frames = 0;
         refresh();

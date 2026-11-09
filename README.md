@@ -1,18 +1,21 @@
-# Boids / 10,000
+# Boids / 10,000 CPU or 100,000 GPU
 
 A toroidal flock with 1024 x 1024, 512 x 512 or 256 x 256 worlds: C++20, Flecs 4.1.0, Emscripten 4.0.23, WebAssembly and WebGL 2.
+
+The simulation selector adds a **100,000-boid WebGPU compute mode** in browsers with WebGPU on HTTPS or localhost. The existing 10,000-boid C++/Flecs/WASM mode remains available.
 
 **Live:** https://jkeywo.github.io/boids-test/
 
 ## Controls
 
+- **Simulation mode:** choose 10,000 CPU boids or 100,000 GPU boids. Each flock pauses while its mode is inactive. The same controls work in both modes; the selected mode is saved. Unsupported GPU devices fall back to CPU with a message.
 - **Shoal boost:** individual boids turning more than 45° get 1.5× speed and 2× turn rate for 0.6 seconds. A further 0.8-second cooldown and a turn below 20° rearm the trigger. Disabling clears boosts.
 - **Send predator:** every click launches another left-to-right crossing at 180 units/second by default. Multiple crossings and orbiting predators coexist. Each crossing predator leaves automatically after its own pass.
 - **− / +:** zero to 16 predators orbit the centre at radius 400 by default, clockwise once every 20 seconds. A new predator enters the largest angular gap.
-- **Map size:** choose 1024 x 1024, 512 x 512 or 256 x 256. All 10,000 boids remain; positions and orbit radius scale proportionally (400 / 200 / 100 units by default). Boid/crossing speeds remain in world units per second.
+- **Map size:** choose 1024 x 1024, 512 x 512 or 256 x 256. The full selected population remains; positions and orbit radius scale proportionally (400 / 200 / 100 units by default). Boid/crossing speeds remain in world units per second.
 - **Functor panels:** independent enable switches and live sliders for cohesion, alignment, repulsion, predator flee, shoal and wind. All six functors use the same checkbox control. The parameter area scrolls independently of the simulation.
 
-Predators only scare boids. The population stays at 10,000. All steering uses shortest toroidal displacement, so boids interact across boundaries.
+Predators only scare boids. The selected population stays constant. All steering uses shortest toroidal displacement, so boids interact across boundaries.
 
 ## Build and run
 
@@ -57,13 +60,25 @@ Dense cells use a rotating, spatially distributed sample with at most 48 candida
 
 The renderer interpolates wrapped positions between ticks, streams one instance buffer and draws boids/predators in one instanced call. No per-boid DOM elements or JavaScript calls are involved. WASM is single-threaded and needs no cross-origin isolation. The canvas backing buffer is capped at 1024². The fixed simulation caps catch-up at four ticks, discards excess accumulated lag and pauses in hidden tabs; a slow device may therefore lose simulated time rather than accumulate an unbounded backlog.
 
+## GPU simulation
+
+`web/gpu.js` manages WebGPU resources; `gpu-sim.wgsl` implements initialization, spatial binning, independent cohesion/alignment/repulsion/flee, Perlin wind, shoal state, turn limiting and wrapped integration. Two 3.2 MB storage buffers hold all 100,000 boids. `gpu-render.wgsl` reads these buffers directly and draws all boids and predators in one instanced call. No per-frame boid upload or readback is needed. C++/Flecs continues to own validated settings and predator paths while CPU boid integration is suspended.
+
+The grid has up to 32 x 32 cells, adapting to the map and interaction radii. Each cell retains up to 128 representatives, with insertion order rotated each tick. Each boid inspects up to 32 candidates distributed across adjacent cells, filtering each functor by its own radius. This is a bounded approximation in crowded regions, rather than an all-pairs solution. Every one of the 100,000 boids is integrated at a target 60 Hz. All active predators are checked by the flee shader; wind is generated on the GPU as a periodic 32 x 32 field with two Perlin time slices at 15 Hz.
+
+Four aligned configuration slots keep catch-up ticks independent. At most two frames may remain in flight, preventing a slow GPU from building an unbounded command queue. GPU work is measured asynchronously with timestamp queries when supported; the UI otherwise labels CPU submission time explicitly. The FPS counter and benchmarks count completed GPU submissions. The canvas remains capped at the selected map size.
+
+Run `npm run test:gpu` after building. `BROWSER_CHANNEL=chrome` uses installed Chrome; `GPU_SOFTWARE=1` enables a software adapter for CI shader/functional validation, which is not a hardware performance measurement. The test reads all 100,000 GPU records, checks motion and finite wrapped state, CPU suspension, all map sizes, wind/shoal, 56 predators, mode persistence/reset, unsupported-browser fallback and layout. `BENCHMARK_SECONDS=60` records sustained hardware results; scenarios are `gpu-baseline`, `gpu-wind-small` and `gpu-wind-tiny`. Reports and screenshots are written to `artifacts/`. Normal operation never reads back boid state; `boidsTest.gpuSnapshot()` exists for explicit diagnostics only. WebGPU requires a compatible browser/driver; the CPU mode remains the default. No experimental browser flags are used for hardware measurements.
+
+WebGPU implementation references: [specification](https://gpuweb.github.io/gpuweb/) and [official compute-boids example](https://webgpu.github.io/webgpu-samples/?sample=computeBoids). GPU and CPU trajectories differ because neighbour sampling and noise seeds differ.
+
 ## Wind and live parameters
 
 Wind uses two independently seeded 3D gradient-noise channels for X and Y steering forces, with simulation time as the third coordinate. Each channel combines normalized octaves of Perlin noise using quintic interpolation ([algorithm reference](https://cs.nyu.edu/~perlin/noise/)). Controls expose octaves (1-6), spatial scale, time scale, overall weight, X/Y weights, persistence and lacunarity. Wind starts disabled; setting time scale to zero freezes the field.
 
 For bounded cost with 10,000 boids, C++ samples a periodic 32 x 32 field at 15 Hz, interpolates between its time slices, then bilinearly samples that field for each boid at 60 Hz. Sampling wraps at the edges. Very fine octave detail is limited by this field resolution.
 
-Other panels expose individual steering radii/weights, shoal trigger/rearm angles, boost duration/cooldown, speed/turn multipliers, orbit radius/period and crossing-predator speed. Changes apply live. Orbit radius is clamped to fit the active map, and shoal rearm angle stays below its trigger angle. Settings save automatically in this browser. Reloading starts a fresh flock with the saved sliders, functor toggles, map size and orbiting-predator count.
+Other panels expose individual steering radii/weights, shoal trigger/rearm angles, boost duration/cooldown, speed/turn multipliers, orbit radius/period and crossing-predator speed. Changes apply live. Orbit radius is clamped to fit the active map, and shoal rearm angle stays below its trigger angle. Settings save automatically in this browser. Reloading starts a fresh flock with the saved sliders, functor toggles, simulation mode, map size and orbiting-predator count.
 
 `src/parameters.hpp` is the single parameter registry. It supplies names, groups, defaults, bounds and steps to both C++ validation and the automatically generated controls. A future functor can register its toggle/settings there and add its C++ contribution without hand-building another UI panel.
 
@@ -73,8 +88,8 @@ WASM exports `parameter_schema()`, `get_parameter(id)`, `set_parameter(id, value
 
 Changes are saved in local storage under `boids-test.settings.v1`. Slider writes are debounced and flushed when leaving the page; map size and orbit-count changes save immediately. Values are restored through the C++ validation API, with map size applied before orbit radius. Unknown fields are ignored and missing fields keep their defaults.
 
-**Reset to defaults** restores every parameter, the 1024 x 1024 map and zero predators, and clears this app's saved preferences. The flock continues with the default configuration. Other applications' local-storage entries are preserved. The simulation remains usable when storage is blocked or saved data is invalid.
+**Reset to defaults** restores every parameter, CPU mode, the 1024 x 1024 map and zero predators, and clears this app's saved preferences. The flock continues with the default configuration. Other applications' local-storage entries are preserved. The simulation remains usable when storage is blocked or saved data is invalid.
 
 ## Deployment
 
-Pushes to `main` run native and WASM tests plus Chromium smoke tests, then publish `build/site` through GitHub Pages Actions. Pull requests run checks without deployment. Documentation-only pushes skip the workflow. Dependencies are pinned; Flecs source and its MIT licence are vendored. No backend is required.
+Pushes to `main` run native and WASM tests plus Chromium CPU smoke tests and software-adapter WebGPU shader/functional tests, then publish `build/site` through GitHub Pages Actions. Pull requests run checks without deployment. Documentation-only pushes skip the workflow. Dependencies are pinned; Flecs source and its MIT licence are vendored. No backend is required.

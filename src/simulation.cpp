@@ -203,9 +203,10 @@ Vec Simulation::windAt(Vec p) const {
   return fieldSample(windPrevious) * (1 - windAlpha) +
          fieldSample(windNext) * windAlpha;
 }
-void Simulation::tick(float dt) {
+void Simulation::advanceEnvironment(float dt, bool includeWind) {
   elapsed += dt;
-  updateWind();
+  if (includeWind)
+    updateWind();
   for (auto &p : predators) {
     if (p.crossing)
       p.position.x += parameters[CrossingSpeed] * dt;
@@ -223,6 +224,9 @@ void Simulation::tick(float dt) {
                                           p.position.x > extent + 16;
                                  }),
                   predators.end());
+}
+void Simulation::tick(float dt) {
+  advanceEnvironment(dt);
   // Cell lists retain all active predators, including launches beyond 32.
   for (auto &cell : predatorCells)
     cell.clear();

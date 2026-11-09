@@ -229,5 +229,16 @@ EMSCRIPTEN_KEEPALIVE double set_parameter(int id, double value) {
   }
   return 0;
 }
+// GPU mode advances only shared controls/environment, never the 10k CPU flock.
+EMSCRIPTEN_KEEPALIVE void gpu_control_step(double dt) {
+  if (sim && std::isfinite(dt) && dt > 0)
+    sim->advanceEnvironment(float(dt), false);
+}
+EMSCRIPTEN_KEEPALIVE double predator_value(int index, int field) {
+  if (!sim || index < 0 || size_t(index) >= sim->predators.size())
+    return 0;
+  const auto &p = sim->predators[size_t(index)];
+  return field == 0 ? p.position.x : field == 1 ? p.position.y : p.heading;
+}
 EMSCRIPTEN_KEEPALIVE void resume() { accumulator = 0; }
 }

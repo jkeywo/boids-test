@@ -503,3 +503,10 @@ footer {
 #settings-status {
   margin-bottom: 0;
 }
+canvas[hidden] {
+  display: none;
+}
+.mode-picker {
+  margin-top: 0;
+  margin-bottom: 6px;
+}

@@ -190,6 +190,7 @@ public:
   std::vector<Predator> predators;
   explicit Simulation(int count = population);
   void tick(float dt);
+  void advanceEnvironment(float dt, bool includeWind = true);
   void setNeighbourBudget(int v) {
     candidateLimit = std::clamp(v, 8, candidateBudget);
   }

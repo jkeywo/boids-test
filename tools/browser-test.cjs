@@ -483,7 +483,7 @@ const server = http.createServer((req, res) => {
     await page.waitForTimeout(500);
     const boxes = await Promise.all([
       page.locator("aside").boundingBox(),
-      page.locator("canvas").boundingBox(),
+      page.locator("#simulation").boundingBox(),
     ]);
     assert(
       boxes[0].x + boxes[0].width <= boxes[1].x,
