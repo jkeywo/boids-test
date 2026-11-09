@@ -1,4 +1,4 @@
-# CPU and GPU optimisation pass — 9 November 2026
+# CPU and GPU optimisation pass â€” 9 November 2026
 
 Compared with `f7a91f0`, using identical population, map, candidate budgets and functor settings. Hardware: Windows x64, Intel Core Ultra 9 275HX, NVIDIA RTX 5090 Laptop GPU, installed Chrome 156 headless with the non-fallback NVIDIA adapter. Each fresh scene warms 120 fixed 60 Hz ticks, then measures 600 ticks; three alternating before/after runs. CPU profiling fixes the full 48-candidate budget. GPU retains 32 candidates and 128 representatives per cell. Normal production builds retain adaptive CPU quality. The baseline received only the same profiling instrumentation. Raw samples and metadata: [benchmarks/optimization-pass.json](benchmarks/optimization-pass.json).
 
@@ -6,14 +6,14 @@ CPU numbers measure simulation plus CPU render preparation/WebGL submission. GPU
 
 | Mode / scene | Before median ms | After median ms | Median speedup | Before range ms | After range ms |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| CPU / baseline | 7.692 | 3.430 | 2.24x | 6.590–8.116 | 3.378–4.417 |
-| CPU / heavy | 8.733 | 4.113 | 2.12x | 7.274–9.177 | 4.045–5.442 |
-| CPU / tiny | 8.324 | 3.988 | 2.09x | 7.905–10.548 | 3.969–5.148 |
-| CPU / swarm | 0.663 | 0.246 | 2.70x | 0.548–0.711 | 0.240–0.252 |
-| GPU / baseline | 0.262 | 0.199 | 1.31x | 0.262–0.263 | 0.199–0.201 |
-| GPU / heavy | 0.300 | 0.220 | 1.36x | 0.299–0.301 | 0.216–0.220 |
-| GPU / tiny | 0.366 | 0.171 | 2.14x | 0.365–0.380 | 0.169–0.177 |
-| GPU / swarm | 0.055 | 0.055 | 0.98x | 0.055–0.057 | 0.054–0.057 |
+| CPU / baseline | 7.692 | 3.430 | 2.24x | 6.590â€“8.116 | 3.378â€“4.417 |
+| CPU / heavy | 8.733 | 4.113 | 2.12x | 7.274â€“9.177 | 4.045â€“5.442 |
+| CPU / tiny | 8.324 | 3.988 | 2.09x | 7.905â€“10.548 | 3.969â€“5.148 |
+| CPU / swarm | 0.663 | 0.246 | 2.70x | 0.548â€“0.711 | 0.240â€“0.252 |
+| GPU / baseline | 0.262 | 0.199 | 1.31x | 0.262â€“0.263 | 0.199â€“0.201 |
+| GPU / heavy | 0.300 | 0.220 | 1.36x | 0.299â€“0.301 | 0.216â€“0.220 |
+| GPU / tiny | 0.366 | 0.171 | 2.14x | 0.365â€“0.380 | 0.169â€“0.177 |
+| GPU / swarm | 0.055 | 0.055 | 0.98x | 0.055â€“0.057 | 0.054â€“0.057 |
 
 Baseline: 1024 map, default flocking, no predators. Heavy: 1024 map, default flocking plus six-octave wind, shoal, direction hue and 16 Hunt predators. Tiny: the same heavy settings on a 256 map. Swarm: 1024 map, only Swarm steering enabled, no predators. All 10,000 CPU or 100,000 GPU boids remain active. The two implementations already use different bounded samples; floating-point summation/steering changes can also cause trajectories to diverge over time.
 
@@ -24,6 +24,8 @@ The pass covers packed SIMD neighbour reads and shared sampling plans, vector st
 Reproduce current processing costs with `python tools/build.py --test --profile`, `$env:PERF_FRAMES='600'`, then `npm run benchmark:stages`. Preserve a profiling build under a different directory and set `PERF_SITE` to alternate versions; `PERF_OUTPUT` selects each JSON output. This harness freezes normal RAF and drives completed fixed ticks directly. Production validation: MSVC native and Node/WASM each pass **12,217 checks**, including 631 new all-pairs/SIMD and predator-broadphase checks. Installed Chrome passes CPU and GPU browser suites for controls, colour, wrapped maps, wind/shoal, predator paths/density, presets, persistence, fallback and desktop/mobile layout. The GPU Swarm check validates 99,990 records with zero invalid records and >99% aligned to the correct parents.
 
 Normal RAF production runs, 30 seconds per scenario: CPU baseline/tiny report 60.00 FPS and 60.00/59.97 simulation Hz, retaining the full 48-candidate budget. GPU baseline/tiny/Hunt report 59.99/59.98/60.00 completed FPS and approximately 60 simulation Hz. GPU compute averages 0.176/0.116/0.161 ms/tick respectively. These are hardware-specific 60 Hz observations, not a promise for other GPUs or mobile hardware. The raw production reports are included in the measurement JSON.
+
+Firefox CPU/WASM also passes the browser suite. [CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42625849880) pass for code release [0d62201](https://github.com/jkeywo/boids-test/commit/0d62201), including Linux native, WASM, browser and software-GPU tests. The live Pages CPU and GPU modes both advance; a diagnostic snapshot confirms all 100,000 GPU positions/velocities are finite and wrapped, with no browser/GPU errors. Published WASM SHA-256 matches the tested production build: `C55FFDB1C7C668F640F7F5D0F23F4A23020D59CBDC5EED743D7F12A350645897`. Published loader, app, GPU host and both shaders also match the tested assets (text compared with normalised line endings).
 
 ---
 
