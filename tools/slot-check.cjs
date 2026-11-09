@@ -130,7 +130,7 @@ module.exports = async function checkSlots(page) {
     (key) => JSON.parse(localStorage.getItem(key)),
     key,
   );
-  assert.equal(record.version, 3);
+  assert.equal(record.version, 4);
   assert.equal(record.generic.worldSize, 256);
   assert.equal(record.generic.orbitCount, 2);
   for (const slot of record.slots) {
@@ -199,9 +199,35 @@ module.exports = async function checkSlots(page) {
   await choose(1);
   assert.equal((await settings()).speed, 81);
   assert.equal((await settings())["predator-speed"], 125);
-  assert.equal((await settings())["orbit-radius"], 160);
+  assert.equal((await settings())["orbit-radius"], 320);
   assert.equal(await page.evaluate(() => boidsTest.worldSize), 512);
   assert.equal(await page.evaluate(() => boidsTest.predatorCount), 3);
+  // Version 3 stored the orbit radius in local-map units; convert exactly once.
+  await page.evaluate((key) => {
+    const saved = JSON.parse(localStorage.getItem(key));
+    saved.version = 3;
+    saved.generic.worldSize = 256;
+    saved.generic.parameters["orbit-radius"] = 80;
+    localStorage.setItem(key, JSON.stringify(saved));
+  }, key);
+  await page.reload();
+  await ready();
+  assert.equal((await settings())["orbit-radius"], 320);
+  assert.equal(await page.evaluate(() => boidsTest.worldSize), 256);
+  assert.equal(
+    await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)).version,
+      key,
+    ),
+    4,
+  );
+  await page.reload();
+  await ready();
+  assert.equal(
+    (await settings())["orbit-radius"],
+    320,
+    "version-4 reload never double-scales orbit radius",
+  );
   await page.evaluate(({ key, clean }) => localStorage.setItem(key, clean), {
     key,
     clean,

@@ -56,7 +56,7 @@ fn p(id: u32) -> f32 { return cfg.params[id / 4u][id % 4u]; }
     direction = normalize(boid.velocity);
     color = unpack4x8unorm(boid.padding).rgb;
   }
-  let v = shape[vertexId]*scale;
+  let v = shape[vertexId]*scale*(cfg.data.x/1024.0);
   point+=vec2(v.x*direction.x-v.y*direction.y, v.x*direction.y+v.y*direction.x);
   var out: VertexOut;
   out.position = vec4(point.x/cfg.data.x*2.0-1.0, 1.0-point.y/cfg.data.x*2.0, 0.0, 1.0);

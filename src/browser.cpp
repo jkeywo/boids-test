@@ -59,7 +59,7 @@ vec3 hueColour(float degrees) {
 out vec3 color;
 void main() {
   float s = flags.x > .5 ? 3.2 : 1.;
-  vec2 v = vertex * s;
+  vec2 v = vertex * s * (worldSize/1024.);
   vec2 p = transform.xy + vec2(v.x*transform.z-v.y*transform.w, v.x*transform.w+v.y*transform.z);
   gl_Position = vec4(p.x/worldSize*2.-1., 1.-p.y/worldSize*2., 0., 1.);
   float hue = appearance.x;
@@ -241,8 +241,9 @@ EMSCRIPTEN_KEEPALIVE const char *parameter_schema() {
   return schema.c_str();
 }
 EMSCRIPTEN_KEEPALIVE double get_parameter(int id) {
-  return sim && id >= 0 && id < ParameterCount ? sim->parameter(Parameter(id))
-                                               : 0;
+  return sim && id >= 0 && id < ParameterCount
+             ? sim->parameterBase(Parameter(id))
+             : 0;
 }
 EMSCRIPTEN_KEEPALIVE double parameter_max(int id) {
   return sim && id >= 0 && id < ParameterCount
@@ -252,7 +253,7 @@ EMSCRIPTEN_KEEPALIVE double parameter_max(int id) {
 EMSCRIPTEN_KEEPALIVE double set_parameter(int id, double value) {
   if (sim && id >= 0 && id < ParameterCount && std::isfinite(value)) {
     sim->setParameter(Parameter(id), float(value));
-    return sim->parameter(Parameter(id));
+    return sim->parameterBase(Parameter(id));
   }
   return 0;
 }

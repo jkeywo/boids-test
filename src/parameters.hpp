@@ -111,11 +111,15 @@ inline constexpr ParameterSpec parameterSpecs[] = {
 static_assert(std::size(parameterSpecs) == ParameterCount);
 struct Parameters {
   std::array<float, ParameterCount> values{};
+  float spatialScale = 1; // values stay in reference (1024-map) units.
   Parameters() {
     for (int i = 0; i < ParameterCount; ++i)
       values[i] = parameterSpecs[i].initial;
   }
-  float operator[](Parameter id) const { return values[id]; }
+  float operator[](Parameter id) const {
+    return values[id] *
+           (parameterSpecs[id].unit[0] == 'u' ? spatialScale : 1.f);
+  }
   bool set(Parameter id, float value) {
     if (id < 0 || id >= ParameterCount || !std::isfinite(value))
       return false;

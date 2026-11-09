@@ -134,7 +134,7 @@ const server = http.createServer((req, res) => {
         const extent = boidsTest.worldSize;
         for (let i = 0; i < 100000; i++) {
           const k = i * 8,
-            speed = Math.hypot(values[k + 2], values[k + 3]);
+            speed = (Math.hypot(values[k + 2], values[k + 3]) * 1024) / extent;
           if (
             ![
               values[k],
@@ -215,7 +215,7 @@ const server = http.createServer((req, res) => {
       state = await inspect();
       assert.equal(state.invalid, 0, `GPU rescale ${world}`);
       if (world === 256) {
-        // Radius 128 selects the special 2x2 grid: four unique cells, not nine aliases.
+        // Maximum reference radii retain the same proportional grid on every map.
         await page.evaluate(() => {
           for (const name of ["cohesion", "alignment", "repulsion"]) {
             boidsTest.setParameter(name + "-enabled", 1);
@@ -224,7 +224,7 @@ const server = http.createServer((req, res) => {
         });
         await settle();
         state = await inspect();
-        assert.equal(state.invalid, 0, "dense 2x2 GPU grid");
+        assert.equal(state.invalid, 0, "maximum-radius GPU grid");
         await page.evaluate(() => {
           for (const name of ["cohesion", "alignment", "repulsion"]) {
             boidsTest.setParameter(name + "-enabled", 0);
@@ -237,7 +237,7 @@ const server = http.createServer((req, res) => {
       }
       assert(
         Number(await page.locator("#gpu-simulation").getAttribute("width")) <=
-          world,
+          1024,
       );
     }
     await page.evaluate(() => {
@@ -345,7 +345,7 @@ const server = http.createServer((req, res) => {
       );
       await page.evaluate(() => {
         const c = document.querySelector("#gpu-simulation");
-        c.width = boidsTest.worldSize;
+        c.width = 1024;
         c.height = c.width;
       });
       await page.waitForTimeout(1500);

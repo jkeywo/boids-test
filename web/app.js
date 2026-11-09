@@ -254,7 +254,7 @@ function saveSettings() {
     localStorage.setItem(
       SETTINGS_KEY,
       JSON.stringify({
-        version: 3,
+        version: 4,
         generic: currentGenericPreferences(),
         mode: activeMode,
         activeSlot,
@@ -306,8 +306,6 @@ function normaliseSlot(saved, generic = false) {
   if (generic) {
     if ([256, 512, 1024].includes(saved.worldSize)) {
       slot.worldSize = saved.worldSize;
-      slot.parameters["orbit-radius"] *=
-        saved.worldSize / factoryGenericSettings.worldSize;
     }
     if (Number.isInteger(saved.orbitCount))
       slot.orbitCount = Math.max(0, Math.min(16, saved.orbitCount));
@@ -355,12 +353,32 @@ async function restoreSettings() {
   try {
     const saved = JSON.parse(raw);
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+    if ([1, 2, 3].includes(saved.version)) {
+      const legacySlot =
+        Number.isInteger(saved.activeSlot) &&
+        saved.activeSlot >= 0 &&
+        saved.activeSlot < 6
+          ? saved.activeSlot
+          : 0;
+      const generic =
+        saved.version === 1
+          ? saved
+          : saved.version === 2
+            ? saved.slots?.[legacySlot]
+            : saved.generic;
+      if (
+        generic?.parameters &&
+        [256, 512, 1024].includes(generic.worldSize) &&
+        Number.isFinite(generic.parameters["orbit-radius"])
+      )
+        generic.parameters["orbit-radius"] *= 1024 / generic.worldSize;
+    }
     let generic;
     if (saved.version === 1) {
       settingsSlots[0] = normaliseSlot(saved);
       generic = normaliseSlot(saved, true);
     } else if (
-      (saved.version === 2 || saved.version === 3) &&
+      (saved.version === 2 || saved.version === 3 || saved.version === 4) &&
       Array.isArray(saved.slots)
     ) {
       activeSlot =
@@ -382,7 +400,7 @@ async function restoreSettings() {
     applyPreferences(settingsSlots[activeSlot]);
     settingsSlots[activeSlot] = currentPreferences();
     if (saved.mode === "gpu") await setSimulationMode("gpu");
-    if (saved.version !== 3 && !saveSettings()) return;
+    if (saved.version !== 4 && !saveSettings()) return;
     settingsStatus.textContent = `Slot ${activeSlot + 1} restored.`;
   } catch {
     settingsStatus.textContent =
@@ -412,7 +430,7 @@ function resize() {
   const width = Math.max(
     1,
     Math.min(
-      moduleInstance ? moduleInstance._statistic(7) : 1024,
+      1024,
       Math.round(canvasWrap.clientWidth * window.devicePixelRatio),
     ),
   );
@@ -463,7 +481,7 @@ function refresh() {
     (spec) => spec.name === "orbit-radius",
   );
   document.querySelector("#orbit-caption").textContent = [
-    `Circling ${m._get_parameter(orbitSpec.id).toFixed(0)} units from the centre.`,
+    `Circling ${((m._get_parameter(orbitSpec.id) * width) / 1024).toFixed(0)} units from the centre.`,
     "Roaming with Perlin-noise steering; wraps at the edges.",
     "Hunting the densest nearby boid clusters; wraps at the edges.",
   ][Math.round(colours["predator-mode"])];
@@ -493,6 +511,8 @@ mapSize.addEventListener("change", () => {
   moduleInstance._set_world_size(Number(mapSize.value));
   refresh();
   resize();
+  if (activeMode === "cpu") moduleInstance._frame(0);
+  else gpuEngine?.frame(0);
   saveSettings();
 });
 window.boidsTest = {
@@ -578,6 +598,9 @@ window.boidsTest = {
   },
   get predatorCount() {
     return moduleInstance._statistic(9);
+  },
+  parameterSchema() {
+    return structuredClone(parameterDefinitions);
   },
   settings() {
     return parameterValues();

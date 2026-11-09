@@ -86,6 +86,7 @@ const server = http.createServer((req, res) => {
       timeout: 60000,
     });
     console.log("Simulation ready");
+    await require("./map-scale-check.cjs")(page);
     await require("./colour-check.cjs")(page, "#simulation");
     await require("./predator-check.cjs")(page);
     await require("./slot-check.cjs")(page);
@@ -160,7 +161,7 @@ const server = http.createServer((req, res) => {
       (key) => JSON.parse(localStorage.getItem(key)),
       storageKey,
     );
-    assert.equal(saved.version, 3);
+    assert.equal(saved.version, 4);
     assert.equal(saved.activeSlot, 0);
     assert.equal(saved.slots.length, 6);
     assert.equal(saved.generic.worldSize, 256);
@@ -235,7 +236,7 @@ const server = http.createServer((req, res) => {
       (key) => JSON.parse(localStorage.getItem(key)),
       storageKey,
     );
-    assert.equal(migrated.version, 3);
+    assert.equal(migrated.version, 4);
     assert.equal(migrated.slots.length, 6);
     assert.equal(migrated.activeSlot, 0);
     assert.equal(migrated.slots[0].parameters["wind-octaves"], 6);
@@ -385,11 +386,11 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator("#map-size").inputValue(), "512");
     assert.equal(
       Number(await page.locator("#param-orbit-radius").inputValue()),
-      200,
+      400,
     );
     assert.equal(
       await page.locator("#param-orbit-radius").getAttribute("max"),
-      "240",
+      "496",
     );
     await page.locator("#param-wind-enabled").check();
     await page.evaluate(() => window.boidsTest.setParameter("wind-octaves", 6));
@@ -404,11 +405,11 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.evaluate(() => window.boidsTest.crossingCount), 1);
     assert.equal(
       Number(await page.locator("#param-orbit-radius").inputValue()),
-      100,
+      400,
     );
     assert.equal(
       await page.locator("#param-orbit-radius").getAttribute("max"),
-      "112",
+      "496",
     );
     await page.waitForTimeout(150);
     await page.screenshot({
@@ -418,7 +419,7 @@ const server = http.createServer((req, res) => {
     await page.selectOption("#map-size", "512");
     assert.equal(
       Number(await page.locator("#param-orbit-radius").inputValue()),
-      200,
+      400,
     );
     await page.selectOption("#map-size", "1024");
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 1024);
@@ -504,7 +505,7 @@ const server = http.createServer((req, res) => {
           await page.click("#send");
       await page.evaluate(() => {
         const canvas = document.querySelector("canvas");
-        canvas.width = window.boidsTest.worldSize;
+        canvas.width = 1024;
         canvas.height = canvas.width;
       });
       await page.waitForTimeout(1000);

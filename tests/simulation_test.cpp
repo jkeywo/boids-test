@@ -43,16 +43,17 @@ void neighbourReferenceTests() {
           if (i != j) {
             const Vec d = delta(before[i].position, before[j].position, 256);
             const float q = length2(d);
-            if (q > 128 * 128)
+            if (q >
+                sim.parameter(CohesionRadius) * sim.parameter(CohesionRadius))
               continue;
             if (mask & 1)
               offset += d;
             if (mask & 2)
               velocity += before[j].velocity;
             if (mask & 4)
-              separation += q < 1e-8f
+              separation += q < 1e-8f / 16
                                 ? Vec{i < j ? 1.f : -1.f, i < j ? .5f : -.5f}
-                                : d * (-1 / (q + .01f));
+                                : d * (-.25f / (q + .01f / 16));
           }
         Vec desired = unit(offset) * sim.parameter(CohesionWeight) +
                       unit(velocity) * sim.parameter(AlignmentWeight) +
@@ -80,7 +81,7 @@ void neighbourReferenceTests() {
   flee.tick(1);
   const Vec desired =
       Vec{1, 0} * flee.parameter(SwarmWeight) +
-      Flee{100, 100}(
+      Flee{flee.parameter(FleeRadius), flee.parameter(FleeSideRadius)}(
           {100, 100},
           std::vector<PredatorThreat>{flee.predatorThreat(flee.predators[0])},
           256) *
@@ -173,6 +174,63 @@ void predictedEllipseTests() {
   wide.tick(1.f / 60);
   check(wide.state()[0].velocity.x < -1,
         "CPU broadphase bounds both ellipse axes");
+}
+
+void mapScaleTests() {
+  Simulation full(128), half(128), quarter(128);
+  for (auto *sim : {&full, &half, &quarter}) {
+    sim->setBoid(0, {512, 512}, 0);
+    sim->setBoid(1, {512, 512}, 1);
+    sim->setBoid(2, {512.0001f, 512}, 2);
+    sim->setParameter(WindEnabled, 1);
+    sim->setParameter(WindOctaves, 6);
+    sim->setParameter(ShoalEnabled, 1);
+    sim->setParameter(SwarmEnabled, 1);
+  }
+  half.setWorldSize(512);
+  quarter.setWorldSize(256);
+  for (auto *sim : {&full, &half, &quarter}) {
+    for (int i = 0; i < 4; ++i)
+      sim->addPredator();
+    sim->sendPredator();
+    sim->sendPredator();
+  }
+  for (int mode = 0; mode < 3; ++mode) {
+    for (auto *sim : {&full, &half, &quarter})
+      sim->setParameter(PredatorMode, float(mode));
+    for (int step = 0; step < 30; ++step)
+      for (auto *sim : {&full, &half, &quarter})
+        sim->tick(1.f / 60);
+    const auto reference = full.state();
+    for (auto *sim : {&half, &quarter}) {
+      const float inverse = 1024 / sim->worldSize();
+      const auto actual = sim->state();
+      for (size_t i = 0; i < reference.size(); ++i) {
+        check(length2(actual[i].position * inverse - reference[i].position) <
+                  .0001f,
+              "normalised boid positions match across map sizes");
+        check(length2(actual[i].velocity * inverse - reference[i].velocity) <
+                  .0001f,
+              "normalised velocities match with every flock functor enabled");
+      }
+      for (size_t i = 0; i < full.predators.size(); ++i) {
+        check(length2(sim->predators[i].position * inverse -
+                      full.predators[i].position) < .0001f,
+              "predator movement has constant screen distance");
+        check(length2(sim->predatorThreat(sim->predators[i]).centre * inverse -
+                      full.predatorThreat(full.predators[i]).centre) < .0001f,
+              "predicted ellipse centres scale with the map");
+      }
+      check(sim->parameterBase(OrbitRadius) == 400 &&
+                sim->parameterBase(Speed) == 70,
+            "map changes preserve reference slider values");
+    }
+  }
+  quarter.setWorldSize(1024);
+  quarter.setWorldSize(256);
+  check(quarter.parameterBase(OrbitRadius) == 400 &&
+            near(quarter.parameter(Speed), 17.5f),
+        "round trips never double-scale settings");
 }
 
 void tuningTests() {
@@ -280,7 +338,7 @@ void tuningTests() {
   auto seam = delta({2, 2}, {510, 510}, 512);
   check(near(seam.x, -4) && near(seam.y, -4), "small map wraps both axes");
   map.setParameter(OrbitRadius, 999);
-  check(near(map.parameter(OrbitRadius), 240),
+  check(near(map.parameter(OrbitRadius), 248),
         "small map clamps orbit inside map");
   map.setSmallMap(false);
   check(near(map.state()[0].position.x, 800) &&
@@ -345,7 +403,7 @@ void launchAndMapTests() {
              100),
         "256 orbit uses new centre");
   flock.setParameter(OrbitRadius, 496);
-  check(near(flock.parameter(OrbitRadius), 112),
+  check(near(flock.parameter(OrbitRadius), 124),
         "256 orbit bounded inside world");
   check(!flock.setWorldSize(300) && flock.worldSize() == 256,
         "unsupported map size rejected");
@@ -671,6 +729,7 @@ int main() {
               boid.position.y >= 0 && boid.position.y < 256 &&
               std::isfinite(boid.position.y),
           "dense 256 cluster stable at maximum interaction radius");
+  mapScaleTests();
   predictedEllipseTests();
   neighbourReferenceTests();
   tuningTests();

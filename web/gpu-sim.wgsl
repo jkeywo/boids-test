@@ -187,6 +187,7 @@ fn boidColour(velocity: vec2<f32>, boost: f32) -> u32 {
   }
   var b = stateIn.values[id];
   b.position = wrap(b.position*cfg.scale.x);
+  b.velocity *= cfg.scale.x;
   stateOut.values[id] = b;
 }
 @compute @workgroup_size(128) fn clearCells(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -294,6 +295,7 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
     return;
   }
   var b = stateIn.values[id];
+  let mapScale=cfg.data.x/1024.0;
   var maximum = 0.0;
   let cohesionOn = p(P_COHESION_ENABLED)>0.0&&p(P_COHESION_WEIGHT)>0.0;
   let alignmentOn = p(P_ALIGNMENT_ENABLED)>0.0&&p(P_ALIGNMENT_WEIGHT)>0.0;
@@ -348,22 +350,22 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
           velocity+=other.velocity;
         }
         if (repulsionOn&&q<=repulsion2) {
-          if (q<1e-8) {
+          if (q<1e-8*mapScale*mapScale) {
             let sign = select(-1.0, 1.0, id<otherId);
             separation+=vec2(sign, sign*.5);
           }
           else {
-            separation-=d/(q+.01);
+            separation-=d*mapScale/(q+.01*mapScale*mapScale);
           }
         }
       }
     }
   }
-  var desired = unit(offset)*p(P_COHESION_WEIGHT)+unit(velocity)*p(P_ALIGNMENT_WEIGHT)+unit(separation)*p(P_REPULSION_WEIGHT);
+  var desired = unit(offset/mapScale)*p(P_COHESION_WEIGHT)+unit(velocity/mapScale)*p(P_ALIGNMENT_WEIGHT)+unit(separation)*p(P_REPULSION_WEIGHT);
   // Binary-tree links: 1/2 follow 0, 3/4 follow 1. Root 0 has no parent.
   if (id > 0u && p(P_SWARM_ENABLED)>0.0 && p(P_SWARM_WEIGHT)>0.0) {
     let parent = (id - 1u) >> 1u;
-    desired += unit(difference(b.position, stateIn.values[parent].position))*p(P_SWARM_WEIGHT);
+    desired += unit(difference(b.position, stateIn.values[parent].position)/mapScale)*p(P_SWARM_WEIGHT);
   }
   if (p(P_FLEE_ENABLED)>0.0&&p(P_FLEE_WEIGHT)>0.0) {
     let inverseForward = 1.0/p(P_FLEE_RADIUS);

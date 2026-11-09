@@ -1,3 +1,13 @@
+# Uniform map scaling
+
+The 1024, 512 and 256 maps now use spatial factors 1, 0.5 and 0.25 throughout CPU and GPU simulation/rendering. Slider/preset values stay in 1024-map reference units; native parameter evaluation and GPU uniform packing convert distance/speed units locally. Positions and velocities rescale on map switches. Flock, flee, hunt and orbit radii; wind/random noise scales; all movement/prediction speeds; spawn/exit margins; and boid/predator glyphs have consistent screen dimensions. Angles, durations, weights and populations are unchanged. Repulsion regularisation and coincidence tolerances scale with distance squared, preserving force balance. The canvas backing resolution is now independent of map extent, capped at 1024 squared.
+
+Native MSVC and Node/WASM each pass **13,854 checks**, including normalised multi-tick trajectories with every flock functor and all predator movement modes, forecast centres, fixed speeds, canonical settings and map round trips. CPU browser probes freeze motion and get identical complete pixel hashes at 1024/512/256/1024 (920-square canvas, 69,525 coloured pixels, hash 342104164), with identical settings. GPU checks compare all 100,000 boids against the same reference at each scale: zero mismatches, identical 1,004 affected / 98,996 outside, and matching spatial uniforms. Actual GPU sprite readback at 1024-square resolution gives the same 2 boid pixels and 90 predator pixels in isolated crops on each map.
+
+Settings version 4 converts the previously map-local orbit radius from versions 1-3 into reference units once. Tests cover version-2 active-slot migration, version-3 orbit conversion, version-4 reload without double scaling, preset continuity and generic/flock separation. Historical smaller-map benchmarks below predate this uniform scaling.
+
+---
+
 # Predictive elliptical predator avoidance
 
 Predator flee now uses a heading-aligned ellipse at the linearly projected position `position + velocity * predictionSeconds`, with toroidal wrapping. Prediction defaults to 0.5 seconds and has a 0-3 second slider. Forward and Side radius are independently configurable semi-axes (defaults 100 and 50 units); the existing `flee-radius` key remains the forward radius. Weight and enable are unchanged. New fields are flock-preset settings, with defaults merged into older saved slots. Current velocity includes the predator's deterministic speed multiplier, using crossing/roaming speed or orbit tangential speed.

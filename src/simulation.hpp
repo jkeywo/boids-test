@@ -91,7 +91,8 @@ struct Swarm {
       return {};
     const size_t parent = size_t((b.index - 1) >> 1);
     return parent < flock.size()
-               ? unit(delta(b.position, flock[parent].position, extent))
+               ? unit(delta(b.position, flock[parent].position, extent) *
+                      (size / extent))
                : Vec{};
   }
 };
@@ -289,10 +290,9 @@ public:
   }
   int neighbourBudget() const { return candidateLimit; }
   float parameter(Parameter id) const { return parameters[id]; }
+  float parameterBase(Parameter id) const { return parameters.values[id]; }
   bool setParameter(Parameter id, float value);
-  float parameterMax(Parameter id) const {
-    return id == OrbitRadius ? extent / 2 - 16 : parameterSpecs[id].maximum;
-  }
+  float parameterMax(Parameter id) const { return parameterSpecs[id].maximum; }
   float worldSize() const { return extent; }
   bool setWorldSize(float wanted);
   void setSmallMap(bool small) { setWorldSize(small ? 512.f : 1024.f); }

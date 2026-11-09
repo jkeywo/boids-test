@@ -121,12 +121,15 @@ module.exports = async function checkPredatorModes(page) {
           return Math.max(
             ...boidsTest.predators().map((p) => {
               const speed =
-                (p.crossing
+                ((p.crossing
                   ? settings["crossing-speed"]
                   : mode === 0
                     ? (2 * Math.PI * settings["orbit-radius"]) /
                       settings["orbit-period"]
-                    : settings["predator-speed"]) * p.speedMultiplier;
+                    : settings["predator-speed"]) *
+                  p.speedMultiplier *
+                  width) /
+                1024;
               const x = wrap(p.x + Math.cos(p.heading) * speed * prediction),
                 y = wrap(p.y + Math.sin(p.heading) * speed * prediction);
               const delta = (a, b) =>

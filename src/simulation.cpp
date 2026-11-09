@@ -62,8 +62,6 @@ void Simulation::configureGrid() {
 bool Simulation::setParameter(Parameter id, float value) {
   if (!parameters.set(id, value))
     return false;
-  if (id == OrbitRadius)
-    parameters.values[id] = std::min(parameters[id], parameterMax(id));
   if (id == ShoalThreshold || id == ShoalRearm)
     parameters.values[ShoalRearm] =
         std::min(parameters[ShoalRearm], parameters[ShoalThreshold] - 1);
@@ -97,14 +95,18 @@ bool Simulation::setWorldSize(float wanted) {
     return true;
   float ratio = wanted / extent;
   extent = wanted;
-  query.each([&](Boid &b) { b.position = b.position * ratio; });
+  parameters.spatialScale = extent / size;
+  query.each([&](Boid &b) {
+    b.position = b.position * ratio;
+    b.velocity = b.velocity * ratio;
+  });
+  for (auto &position : previousPositions)
+    position = position * ratio;
   for (auto &p : predators) {
     p.position = p.position * ratio;
     p.destination = p.destination * ratio;
   }
   huntDensity.fill(0);
-  parameters.set(OrbitRadius,
-                 std::min(parameters[OrbitRadius] * ratio, extent / 2 - 16));
   windFrame = -1;
   configureGrid();
   return true;
@@ -169,6 +171,8 @@ Neighbours Simulation::neighbours(const Boid &b) const {
   const auto &plan = plans[cell(b.position)][b.index % bucketCount];
   const uint32_t hash =
       uint32_t(b.index) * 2654435761u + uint32_t(ticks / 8) * 2246822519u;
+  const float mapScale = parameters.spatialScale,
+              epsilonScale = mapScale * mapScale;
   const float cohesion2 =
                   parameters[CohesionRadius] * parameters[CohesionRadius],
               alignment2 =
@@ -207,8 +211,8 @@ Neighbours Simulation::neighbours(const Boid &b) const {
     oy = add(oy, mask(cm, dy));
     vx = add(vx, mask(am, velx));
     vy = add(vy, mask(am, vely));
-    const F factor = div(splat(-1), add(q, splat(.01f))),
-            tiny = lt(q, splat(1e-8f));
+    const F factor = div(splat(-mapScale), add(q, splat(.01f * epsilonScale))),
+            tiny = lt(q, splat(1e-8f * epsilonScale));
     const F sign = choose(lt(self, ids), splat(1), splat(-1));
     sx = add(sx, mask(rm, choose(tiny, sign, mul(dx, factor))));
     sy =
@@ -266,15 +270,17 @@ Neighbours Simulation::neighbours(const Boid &b) const {
       if (parameters[AlignmentEnabled] && q <= alignment2)
         n.velocity += other.velocity;
       if (parameters[RepulsionEnabled] && q <= repulsion2) {
-        if (q < 1e-8f) {
+        if (q < 1e-8f * epsilonScale) {
           float sign = b.index < id ? 1.f : -1.f;
           n.separation += Vec{sign, sign * .5f};
         } else
-          n.separation += d * (-1 / (q + .01f));
+          n.separation += d * (-mapScale / (q + .01f * epsilonScale));
       }
     }
   }
 #endif
+  n.offset = n.offset * (size / extent);
+  n.velocity = n.velocity * (size / extent);
   return n;
 }
 void Simulation::fillWind(std::array<Vec, cellCount> &field, float time) {
@@ -396,7 +402,9 @@ void Simulation::advanceEnvironment(float dt, bool includeWind,
   predators.erase(std::remove_if(predators.begin(), predators.end(),
                                  [&](auto &p) {
                                    return p.crossing &&
-                                          p.position.x > extent + 16;
+                                          p.position.x >
+                                              extent +
+                                                  16 * parameters.spatialScale;
                                  }),
                   predators.end());
 }
@@ -560,7 +568,8 @@ int Simulation::crossingCount() const {
                            [](const auto &p) { return p.crossing; }));
 }
 bool Simulation::sendPredator() {
-  const Vec start{-16, extent * (.125f + random() * .75f)};
+  const Vec start{-16 * parameters.spatialScale,
+                  extent * (.125f + random() * .75f)};
   const Vec destination{extent, random() * extent};
   const float heading =
       std::atan2(destination.y - start.y, destination.x - start.x);

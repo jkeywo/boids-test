@@ -353,7 +353,7 @@ export class GPUBoids {
     let radius = 0;
     for (const rule of ["cohesion", "alignment", "repulsion"])
       if (settings[rule + "-enabled"] && settings[rule + "-weight"] > 0)
-        radius = Math.max(radius, settings[rule + "-radius"]);
+        radius = Math.max(radius, (settings[rule + "-radius"] * world) / 1024);
     let side = 32;
     while (side > 2 && world / side < radius) side /= 2;
     const predatorCount = this.bridge.predatorCount();
@@ -376,7 +376,9 @@ export class GPUBoids {
     u[11] = Number(
       this.windFrame >= 0 && this.windFrame + 1 === Math.floor(this.ticks / 4),
     );
-    for (const spec of this.definitions) f[16 + spec.id] = settings[spec.name];
+    for (const spec of this.definitions)
+      f[16 + spec.id] =
+        settings[spec.name] * (spec.unit?.startsWith("u") ? world / 1024 : 1);
     for (const name of ["shoal-rearm", "shoal-threshold"]) {
       const spec = this.definitions.find((p) => p.name === name);
       f[16 + spec.id] = Math.cos((settings[name] * Math.PI) / 180);
