@@ -1,3 +1,22 @@
+# Predator flights, Random and Hunt movement
+
+Release [03d4ced](https://github.com/jkeywo/boids-test/commit/03d4ced) sends each launched predator toward its own random point on the right edge. Resident predators support Orbit, independently seeded Perlin turn steering in (x, y, time), and bounded turning toward the highest-density nearby boid cell. The right-hand Predators panel exposes the movement selector plus roaming speed, turn-rate, noise spatial/time and hunt-radius sliders. Settings persist and reset normally; the UI now has 34 sliders, eight checkboxes and one parameter dropdown.
+
+Native MSVC and Node/WASM each pass 11,540 checks. Tests cover flight geometry, independent targets, finite wrapped roaming, bounded turn rates, dense-vs-close target choice, hunt-radius exclusion, toroidal targets and externally supplied density. Chrome CPU/GPU and Firefox CPU suites pass locally. Both CPU and GPU movement/control suites pass against the published site. [CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42596218750) pass, including software-GPU density and movement checks. Published WASM SHA-256 matches the tested local build: `252002E79F704FC1C17801F1621C6834BE9C7D54AF4FA9D081F3E51E26ABB158`.
+
+Hardware measurement: Windows x64, Intel Core Ultra 9 275HX, RTX 5090 Laptop GPU, Chrome 156 headless, normal RAF scheduling, non-fallback NVIDIA WebGPU adapter. Each 60-second sample simulates all 100,000 boids on a 1024 map with six-octave wind, shoal boosts and 16 resident predators; one crossing launches before warm-up and exits early.
+
+| Resident mode | Mean completed FPS | Simulation Hz | p95 / p99 RAF ms | Mean sampled GPU compute ms/tick | CPU submission ms/frame |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Random | 60.00 | 60.00 | 16.80 / 16.90 | 0.278 | 0.139 |
+| Hunt | 60.00 | 60.00 | 16.80 / 16.90 | 0.288 | 0.153 |
+
+Hunt counts all boids into an uncapped 32 x 32 GPU density field, independently of the bounded neighbour sample. Only this 4 KB field is read asynchronously at up to 10 Hz in simulation time; individual boid state is not read back. The C++ predator controller uses that field rather than the paused CPU flock. Browser tests verify totals of 100,000 in GPU mode and 10,000 in CPU mode with boid-neighbour rules disabled. Resizing and mode changes invalidate stale fields. Hunt resolution and GPU sensor latency are approximations; these hardware results do not establish performance on every device.
+
+Reproduce with `BROWSER_CHANNEL=chrome`, `BENCHMARK_SECONDS=60`, `BENCHMARK_SCENARIOS=gpu-random,gpu-hunt`, then `npm run test:gpu`. Raw local report: `artifacts/predator-modes-gpu-60s.json`.
+
+---
+
 # Appearance controls and hue wrapping
 
 Release [a904d08](https://github.com/jkeywo/boids-test/commit/a904d08) adds a base boid hue, a dark background in that hue, optional direction colouring and an optional signed hue offset during shoal boosts. All four controls persist in local storage and reset to their defaults. The UI now exposes 29 sliders and eight checkboxes. GPU configuration packing derives from the parameter registry instead of assuming a fixed array size.
