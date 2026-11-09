@@ -15,6 +15,7 @@ static double accumulator = 0;
 static float simulationMs = 0;
 static NeighbourBudgetController quality;
 static uint64_t totalTicks = 0;
+static std::array<uint32_t, cellCount> incomingHuntDensity;
 static GLuint shader(GLenum type, const char *source) {
   GLuint s = glCreateShader(type);
   glShaderSource(s, 1, &source, nullptr);
@@ -224,6 +225,8 @@ EMSCRIPTEN_KEEPALIVE double statistic(int id) {
     return sim->crossingCount();
   case 9:
     return double(sim->predators.size());
+  case 10:
+    return sim->huntDensityTotal();
   default:
     return population;
   }
@@ -259,13 +262,39 @@ EMSCRIPTEN_KEEPALIVE double set_parameter(int id, double value) {
 // GPU mode advances only shared controls/environment, never the 10k CPU flock.
 EMSCRIPTEN_KEEPALIVE void gpu_control_step(double dt) {
   if (sim && std::isfinite(dt) && dt > 0)
-    sim->advanceEnvironment(float(dt), false);
+    sim->advanceEnvironment(float(dt), false, false);
 }
 EMSCRIPTEN_KEEPALIVE double predator_value(int index, int field) {
   if (!sim || index < 0 || size_t(index) >= sim->predators.size())
     return 0;
   const auto &p = sim->predators[size_t(index)];
-  return field == 0 ? p.position.x : field == 1 ? p.position.y : p.heading;
+  switch (field) {
+  case 0:
+    return p.position.x;
+  case 1:
+    return p.position.y;
+  case 2:
+    return p.heading;
+  case 3:
+    return p.destination.x;
+  case 4:
+    return p.destination.y;
+  case 5:
+    return p.crossing ? 1 : 0;
+  default:
+    return 0;
+  }
+}
+EMSCRIPTEN_KEEPALIVE uint32_t *hunt_density_buffer() {
+  return incomingHuntDensity.data();
+}
+EMSCRIPTEN_KEEPALIVE void apply_hunt_density(double extent) {
+  if (sim && sim->worldSize() == extent)
+    sim->setHuntDensity(incomingHuntDensity);
+}
+EMSCRIPTEN_KEEPALIVE void clear_hunt_density() {
+  if (sim)
+    sim->clearHuntDensity();
 }
 EMSCRIPTEN_KEEPALIVE void resume() { accumulator = 0; }
 }

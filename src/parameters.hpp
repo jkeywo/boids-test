@@ -72,7 +72,19 @@ namespace boids {
   X(ShoalHueEnabled, "shoal-hue-enabled", "Appearance", "Shoal hue offset",    \
     "", 0, 1, 1, 1, true)                                                      \
   X(ShoalHueOffset, "shoal-hue-offset", "Appearance", "Shoal offset", "deg",   \
-    -180, 180, 1, -132, false)
+    -180, 180, 1, -132, false)                                                 \
+  X(PredatorMode, "predator-mode", "Predators", "Resident movement", "", 0, 2, \
+    1, 0, false)                                                               \
+  X(PredatorSpeed, "predator-speed", "Predators", "Roaming speed", "u/s", 10,  \
+    400, 5, 100, false)                                                        \
+  X(PredatorTurnRate, "predator-turn-rate", "Predators", "Turn rate", "deg/s", \
+    10, 720, 5, 120, false)                                                    \
+  X(PredatorNoiseScale, "predator-noise-scale", "Predators",                   \
+    "Random noise scale", "u", 16, 1024, 4, 192, false)                        \
+  X(PredatorNoiseTime, "predator-noise-time", "Predators",                     \
+    "Random time scale", "/s", 0, 2, .01, .2, false)                           \
+  X(PredatorHuntRadius, "predator-hunt-radius", "Predators", "Hunt radius",    \
+    "u", 16, 768, 4, 192, false)
 enum Parameter {
 #define ENUM(id, ...) id,
   BOID_PARAMETERS(ENUM)
@@ -121,7 +133,10 @@ inline std::string parameterSchema() {
             "\",\"min\":" + std::to_string(s.minimum) +
             ",\"max\":" + std::to_string(s.maximum) +
             ",\"step\":" + std::to_string(s.step) +
-            ",\"toggle\":" + (s.toggle ? "true" : "false") + "}";
+            ",\"toggle\":" + (s.toggle ? "true" : "false");
+    if (i == PredatorMode)
+      json += ",\"options\":[\"Orbit\",\"Random\",\"Hunt\"]";
+    json += "}";
   }
   return json + "]";
 }

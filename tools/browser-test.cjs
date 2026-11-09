@@ -87,6 +87,7 @@ const server = http.createServer((req, res) => {
     });
     console.log("Simulation ready");
     await require("./colour-check.cjs")(page, "#simulation");
+    await require("./predator-check.cjs")(page);
     const storageKey = "boids-test.settings.v1";
     const ready = () =>
       page.waitForFunction(() => window.boidsTest?.ready, null, {
@@ -352,7 +353,7 @@ const server = http.createServer((req, res) => {
       document.querySelector("#parameter-controls").scrollTop = 0;
       return { sliders, toggles };
     });
-    assert.equal(controlReport.sliders, 29);
+    assert.equal(controlReport.sliders, 34);
     assert.equal(controlReport.toggles, 8);
     await page.selectOption("#map-size", "512");
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 512);

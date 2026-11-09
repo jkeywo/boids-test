@@ -604,3 +604,20 @@ canvas[hidden] {
     letter-spacing: 0.8px;
   }
 }
+
+.parameter-row select {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px;
+  color: #e2e9eb;
+  background: #101c23;
+  border: 1px solid #26353c;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+}
+.parameter-row select:focus-visible {
+  outline: 2px solid #45d4db;
+  outline-offset: 2px;
+}

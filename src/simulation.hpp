@@ -62,6 +62,8 @@ struct Predator {
   Vec position;
   float heading = 0, phase = 0;
   bool crossing = false;
+  Vec destination;
+  uint32_t noiseSeed = 0;
 };
 struct Neighbours {
   Vec offset, velocity, separation;
@@ -169,6 +171,7 @@ class Simulation {
   std::array<std::vector<Predator>, 64> predatorCells;
   std::array<Vec, cellCount> windPrevious{}, windNext{};
   Parameters parameters;
+  std::array<uint32_t, cellCount> huntDensity{};
   uint32_t randomState = 0x12345678;
   uint64_t ticks = 0;
   int candidateLimit = candidateBudget;
@@ -184,13 +187,27 @@ class Simulation {
   void buildGrid();
   Neighbours neighbours(const Boid &b) const;
   void updateWind();
+  void updateHuntDensity();
+  float randomPredatorTurn(const Predator &p) const;
+  Vec huntTarget(Vec position) const;
   void fillWind(std::array<Vec, cellCount> &field, float time);
 
 public:
   std::vector<Predator> predators;
   explicit Simulation(int count = population);
   void tick(float dt);
-  void advanceEnvironment(float dt, bool includeWind = true);
+  void advanceEnvironment(float dt, bool includeWind = true,
+                          bool nativeHuntDensity = true);
+  void setHuntDensity(const std::array<uint32_t, cellCount> &density) {
+    huntDensity = density;
+  }
+  uint32_t huntDensityTotal() const {
+    uint32_t total = 0;
+    for (auto count : huntDensity)
+      total += count;
+    return total;
+  }
+  void clearHuntDensity() { huntDensity.fill(0); }
   void setNeighbourBudget(int v) {
     candidateLimit = std::clamp(v, 8, candidateBudget);
   }

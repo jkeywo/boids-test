@@ -39,6 +39,23 @@ async function setSimulationMode(requested) {
         settings: parameterValues,
         worldSize: () => moduleInstance._statistic(7),
         predatorCount: () => moduleInstance._statistic(9),
+        residentCount: () => moduleInstance._statistic(0),
+        huntDensity: (density, extent) => {
+          if (
+            activeMode !== "gpu" ||
+            moduleInstance._statistic(7) !== extent ||
+            moduleInstance._get_parameter(
+              parameterDefinitions.find((spec) => spec.name === "predator-mode")
+                .id,
+            ) !== 2
+          )
+            return;
+          moduleInstance.HEAPU32.set(
+            density,
+            moduleInstance._hunt_density_buffer() >>> 2,
+          );
+          moduleInstance._apply_hunt_density(extent);
+        },
         predator: (i) => ({
           x: moduleInstance._predator_value(i, 0),
           y: moduleInstance._predator_value(i, 1),
@@ -55,6 +72,7 @@ async function setSimulationMode(requested) {
     if (gpuEngine.lost)
       throw new Error("The GPU device is unavailable. Reload to retry.");
     activeMode = "gpu";
+    moduleInstance._clear_hunt_density();
     modeLoading = false;
     canvas.hidden = true;
     gpuCanvas.hidden = false;
@@ -113,7 +131,7 @@ function buildParameterControls() {
       group = { details, summary };
       groups.set(spec.group, group);
     }
-    const input = document.createElement("input");
+    const input = document.createElement(spec.options ? "select" : "input");
     input.disabled = true;
     input.id = "param-" + spec.name;
     input.dataset.parameter = spec.name;
@@ -137,29 +155,46 @@ function buildParameterControls() {
         group.details.append(row);
       }
     } else {
-      input.type = "range";
-      input.min = spec.min;
-      input.max = spec.max;
-      input.step = spec.step;
+      if (spec.options) {
+        spec.options.forEach((name, index) => {
+          const option = document.createElement("option");
+          option.value = String(index);
+          option.textContent = name;
+          input.append(option);
+        });
+      } else {
+        input.type = "range";
+        input.min = spec.min;
+        input.max = spec.max;
+        input.step = spec.step;
+      }
       const row = document.createElement("div");
       row.className = "parameter-row";
       const label = document.createElement("label");
       label.htmlFor = input.id;
       label.textContent = spec.label;
-      const output = document.createElement("output");
-      output.htmlFor = input.id;
-      output.id = input.id + "-value";
-      row.append(label, output, input);
-      group.details.append(row);
+      if (spec.options) {
+        row.append(label, input);
+        group.details.insertBefore(row, group.summary.nextSibling);
+      } else {
+        const output = document.createElement("output");
+        output.htmlFor = input.id;
+        output.id = input.id + "-value";
+        row.append(label, output, input);
+        group.details.append(row);
+      }
     }
-    input.addEventListener(spec.toggle ? "change" : "input", () => {
-      moduleInstance._set_parameter(
-        spec.id,
-        spec.toggle ? Number(input.checked) : Number(input.value),
-      );
-      refresh();
-      scheduleSettingsSave();
-    });
+    input.addEventListener(
+      spec.toggle || spec.options ? "change" : "input",
+      () => {
+        moduleInstance._set_parameter(
+          spec.id,
+          spec.toggle ? Number(input.checked) : Number(input.value),
+        );
+        refresh();
+        scheduleSettingsSave();
+      },
+    );
     if (!spec.toggle) input.addEventListener("change", saveSettings);
     parameterWidgets.set(spec.id, { input, spec });
   }
@@ -343,12 +378,16 @@ function refresh() {
   const orbitSpec = parameterDefinitions.find(
     (spec) => spec.name === "orbit-radius",
   );
-  document.querySelector("#orbit-caption").textContent =
-    `Circling ${m._get_parameter(orbitSpec.id).toFixed(0)} units from the centre.`;
+  document.querySelector("#orbit-caption").textContent = [
+    `Circling ${m._get_parameter(orbitSpec.id).toFixed(0)} units from the centre.`,
+    "Roaming with Perlin-noise steering; wraps at the edges.",
+    "Hunting the densest nearby boid clusters; wraps at the edges.",
+  ][Math.round(colours["predator-mode"])];
   for (const { input, spec } of parameterWidgets.values()) {
     const value = m._get_parameter(spec.id);
     input.disabled = !initialized;
     if (spec.toggle) input.checked = value > 0;
+    else if (spec.options) input.value = String(value);
     else {
       input.max = m._parameter_max(spec.id);
       input.value = value;
@@ -395,6 +434,19 @@ window.boidsTest = {
   },
   get crossingCount() {
     return moduleInstance._statistic(8);
+  },
+  get huntDensityTotal() {
+    return moduleInstance._statistic(10);
+  },
+  predators() {
+    return Array.from({ length: this.predatorCount }, (_, i) => ({
+      x: moduleInstance._predator_value(i, 0),
+      y: moduleInstance._predator_value(i, 1),
+      heading: moduleInstance._predator_value(i, 2),
+      targetX: moduleInstance._predator_value(i, 3),
+      targetY: moduleInstance._predator_value(i, 4),
+      crossing: !!moduleInstance._predator_value(i, 5),
+    }));
   },
   get predatorCount() {
     return moduleInstance._statistic(9);

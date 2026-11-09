@@ -65,6 +65,10 @@ export class GPUBoids {
     this.windFrame = -1;
     this.lost = false;
     this.mapping = false;
+    this.mappingDensity = false;
+    this.lastDensityTick = -6;
+    this.densityEpoch = 0;
+    this.densityReads = 0;
     this.errors = [];
     device.addEventListener("uncapturederror", (event) => {
       this.errors.push(event.error.message);
@@ -109,6 +113,15 @@ export class GPUBoids {
       size: 1024 * 4,
       usage: GPUBufferUsage.STORAGE,
     });
+    this.huntDensity = d.createBuffer({
+      label: "32x32 hunt density (no boid readback)",
+      size: 4096,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+    });
+    this.readDensity = d.createBuffer({
+      size: 4096,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
     this.cellIndices = d.createBuffer({
       label: "Bounded spatial representatives",
       size: 1024 * 128 * 4,
@@ -137,7 +150,7 @@ export class GPUBoids {
             minBindingSize: this.configBytes,
           },
         },
-        ...[1, 2, 3, 4, 5, 6].map((binding) => ({
+        ...[1, 2, 3, 4, 5, 6, 7].map((binding) => ({
           binding,
           visibility: GPUShaderStage.COMPUTE,
           buffer: {
@@ -284,6 +297,7 @@ export class GPUBoids {
           { binding: 3, resource: { buffer: this.cellCounts } },
           { binding: 4, resource: { buffer: this.cellIndices } },
           { binding: 5, resource: { buffer: this.wind } },
+          { binding: 7, resource: { buffer: this.huntDensity } },
           {
             binding: 6,
             resource: { buffer: this.predators, size: this.predatorStride },
@@ -335,7 +349,9 @@ export class GPUBoids {
     const predatorCount = this.bridge.predatorCount();
     f.set([world, dt, this.ticks / 60, alpha], 0);
     u.set([COUNT, side, this.budget, predatorCount], 4);
-    u.set([this.ticks, (this.ticks * 7919) % COUNT, 0, 0], 8);
+    const hunting =
+      settings["predator-mode"] === 2 && this.bridge.residentCount() > 0;
+    u.set([this.ticks, (this.ticks * 7919) % COUNT, Number(hunting), 0], 8);
     f[12] = ratio;
     for (const spec of this.definitions) f[16 + spec.id] = settings[spec.name];
     this.device.queue.writeBuffer(
@@ -353,7 +369,7 @@ export class GPUBoids {
       slot * this.predatorStride,
       data,
     );
-    return { radius, predatorCount };
+    return { radius, predatorCount, hunting };
   }
   dispatch(encoder, name, slot, groups, timestamps) {
     const descriptor = { label: name };
@@ -383,6 +399,8 @@ export class GPUBoids {
     );
     this.device.queue.submit([encoder.finish()]);
     this.world = wanted;
+    this.densityEpoch++;
+    this.lastDensityTick = -6;
     this.accumulator = 0;
     this.windFrame = -1;
   }
@@ -390,6 +408,13 @@ export class GPUBoids {
     if (this.lost) return;
     const begin = performance.now();
     const settings = this.bridge.settings();
+    const hunting =
+      settings["predator-mode"] === 2 && this.bridge.residentCount() > 0;
+    if (hunting !== this.wasHunting) {
+      this.wasHunting = hunting;
+      this.densityEpoch++;
+      this.lastDensityTick = -6;
+    }
     this.resizeWorld(settings);
     this.accumulator = Math.min(
       this.accumulator + Math.max(0, Math.min(dt, 0.1)),
@@ -439,7 +464,7 @@ export class GPUBoids {
           ? { querySet: this.queries, beginningOfPassWriteIndex: steps * 2 }
           : undefined,
       );
-      if (config.radius > 0)
+      if (config.radius > 0 || config.hunting)
         this.dispatch(encoder, "binBoids", steps, Math.ceil(COUNT / 128));
       if (
         settings["wind-enabled"] &&
@@ -505,7 +530,46 @@ export class GPUBoids {
       encoder.copyBufferToBuffer(this.resolveBuffer, 0, this.readTimer, 0, 64);
       this.mapping = true;
     }
+    const densityRead =
+      settings["predator-mode"] === 2 &&
+      this.bridge.residentCount() > 0 &&
+      steps > 0 &&
+      !this.mappingDensity &&
+      this.ticks - this.lastDensityTick >= 6;
+    const densityWorld = this.world,
+      densityEpoch = this.densityEpoch;
+    if (densityRead) {
+      encoder.copyBufferToBuffer(
+        this.huntDensity,
+        0,
+        this.readDensity,
+        0,
+        4096,
+      );
+      this.mappingDensity = true;
+      this.lastDensityTick = this.ticks;
+    }
     this.device.queue.submit([encoder.finish()]);
+    if (densityRead)
+      this.readDensity
+        .mapAsync(GPUMapMode.READ)
+        .then(() => {
+          if (
+            densityEpoch === this.densityEpoch &&
+            densityWorld === this.world
+          ) {
+            this.bridge.huntDensity(
+              new Uint32Array(this.readDensity.getMappedRange()),
+              densityWorld,
+            );
+            this.densityReads++;
+          }
+          this.readDensity.unmap();
+          this.mappingDensity = false;
+        })
+        .catch(() => {
+          this.mappingDensity = false;
+        });
     this.frames++;
     this.inflight++;
     this.device.queue
@@ -535,6 +599,8 @@ export class GPUBoids {
   }
   resetClock() {
     this.accumulator = 0;
+    this.densityEpoch++;
+    this.lastDensityTick = -6;
   }
   async snapshot() {
     await this.device.queue.onSubmittedWorkDone();
@@ -560,6 +626,7 @@ export class GPUBoids {
   stats() {
     return {
       population: COUNT,
+      densityReads: this.densityReads,
       steps: this.completedTicks,
       submittedSteps: this.ticks,
       submittedFrames: this.frames,

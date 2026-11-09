@@ -37,6 +37,7 @@ struct Vectors {
 @group(0) @binding(4) var<storage, read_write> cellIndices: Indices;
 @group(0) @binding(5) var<storage, read_write> wind: Vectors;
 @group(0) @binding(6) var<storage, read> predators: Vectors;
+@group(0) @binding(7) var<storage, read_write> huntDensity: Counts;
 const PI: f32 = 3.14159265359;
 // Each cell keeps a rotating bounded pool; every boid is still integrated.
 const POOL: u32 = 128u;
@@ -176,6 +177,7 @@ fn fractal(position: vec2<f32>, time: f32) -> vec2<f32> {
 @compute @workgroup_size(128) fn clearCells(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (gid.x<1024u) {
     atomicStore(&cellCounts.values[gid.x], 0u);
+    atomicStore(&huntDensity.values[gid.x], 0u);
   }
 }
 // Rotate invocation order to avoid permanently preferring the same dense-cell IDs.
@@ -186,6 +188,10 @@ fn fractal(position: vec2<f32>, time: f32) -> vec2<f32> {
   var id = gid.x+cfg.misc.y;
   if (id>=cfg.counts.x) {
     id-=cfg.counts.x;
+  }
+  if (cfg.misc.z != 0u) {
+    let xy = min(vec2<u32>(stateIn.values[id].position / cfg.data.x * 32.0), vec2(31u));
+    atomicAdd(&huntDensity.values[xy.x + 32u * xy.y], 1u);
   }
   let c = cell(stateIn.values[id].position);
   let slot = atomicAdd(&cellCounts.values[c], 1u);

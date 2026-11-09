@@ -96,6 +96,7 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator("#simulation").isVisible(), false);
     assert.equal(await page.locator("#gpu-simulation").isVisible(), true);
     await require("./colour-check.cjs")(page, "#gpu-simulation");
+    await require("./predator-check.cjs")(page);
     // No CPU boid integration is allowed to masquerade as GPU simulation.
     const cpuTicks = await page.evaluate(() => boidsTest.cpuTicks);
     const step = await page.evaluate(() => boidsTest.gpuStats().steps);
@@ -300,6 +301,8 @@ const server = http.createServer((req, res) => {
       { name: "gpu-baseline", world: 1024, heavy: false },
       { name: "gpu-wind-small", world: 512, heavy: true },
       { name: "gpu-wind-tiny", world: 256, heavy: true },
+      { name: "gpu-random", world: 1024, heavy: true, movement: 1 },
+      { name: "gpu-hunt", world: 1024, heavy: true, movement: 2 },
     ]) {
       if (
         process.env.BENCHMARK_SCENARIOS &&
@@ -315,6 +318,10 @@ const server = http.createServer((req, res) => {
           for (let i = 0; i < 16; i++) document.querySelector("#add").click();
           document.querySelector("#send").click();
         });
+      await page.evaluate(
+        (mode) => boidsTest.setParameter("predator-mode", mode),
+        scenario.movement || 0,
+      );
       await page.evaluate(() => {
         const c = document.querySelector("#gpu-simulation");
         c.width = boidsTest.worldSize;

@@ -53,7 +53,14 @@ bool Simulation::setParameter(Parameter id, float value) {
     });
   if (id >= WindEnabled && id <= WindLacunarity)
     windFrame = -1;
-  if (id == OrbitRadius)
+  if (id == PredatorMode)
+    huntDensity.fill(0);
+  if (id == PredatorMode && parameters[id] == 0)
+    for (auto &p : predators)
+      if (!p.crossing)
+        p.phase =
+            std::atan2(p.position.y - extent / 2, p.position.x - extent / 2);
+  if (id == OrbitRadius && parameters[PredatorMode] == 0)
     for (auto &p : predators)
       if (!p.crossing)
         p.position = {extent / 2 + parameters[id] * std::cos(p.phase),
@@ -69,8 +76,11 @@ bool Simulation::setWorldSize(float wanted) {
   float ratio = wanted / extent;
   extent = wanted;
   query.each([&](Boid &b) { b.position = b.position * ratio; });
-  for (auto &p : predators)
+  for (auto &p : predators) {
     p.position = p.position * ratio;
+    p.destination = p.destination * ratio;
+  }
+  huntDensity.fill(0);
   parameters.set(OrbitRadius,
                  std::min(parameters[OrbitRadius] * ratio, extent / 2 - 16));
   windFrame = -1;
@@ -203,19 +213,78 @@ Vec Simulation::windAt(Vec p) const {
   return fieldSample(windPrevious) * (1 - windAlpha) +
          fieldSample(windNext) * windAlpha;
 }
-void Simulation::advanceEnvironment(float dt, bool includeWind) {
+void Simulation::updateHuntDensity() {
+  huntDensity.fill(0);
+  query.each([&](const Boid &b) {
+    const int x = std::min(31, int(b.position.x / extent * 32));
+    const int y = std::min(31, int(b.position.y / extent * 32));
+    ++huntDensity[x + 32 * y];
+  });
+}
+float Simulation::randomPredatorTurn(const Predator &p) const {
+  const float scale = parameters[PredatorNoiseScale];
+  return std::clamp(2 * Perlin3D::sample(
+                            p.position.x / scale, p.position.y / scale,
+                            float(elapsed) * parameters[PredatorNoiseTime],
+                            p.noiseSeed),
+                    -1.f, 1.f) *
+         parameters[PredatorTurnRate] * pi / 180;
+}
+Vec Simulation::huntTarget(Vec position) const {
+  uint32_t highest = 0;
+  float nearest =
+      parameters[PredatorHuntRadius] * parameters[PredatorHuntRadius];
+  Vec target;
+  for (int c = 0; c < cellCount; ++c) {
+    if (!huntDensity[c] || huntDensity[c] < highest)
+      continue;
+    const Vec centre{(float(c % 32) + .5f) * extent / 32,
+                     (float(c / 32) + .5f) * extent / 32};
+    const Vec d = delta(position, centre, extent);
+    const float distance = length2(d);
+    if (distance >
+        parameters[PredatorHuntRadius] * parameters[PredatorHuntRadius])
+      continue;
+    if (huntDensity[c] > highest || distance < nearest) {
+      highest = huntDensity[c];
+      nearest = distance;
+      target = d;
+    }
+  }
+  return target;
+}
+void Simulation::advanceEnvironment(float dt, bool includeWind,
+                                    bool nativeHuntDensity) {
   elapsed += dt;
   if (includeWind)
     updateWind();
+  if (nativeHuntDensity && parameters[PredatorMode] == 2 && orbitCount() > 0)
+    updateHuntDensity();
   for (auto &p : predators) {
-    if (p.crossing)
-      p.position.x += parameters[CrossingSpeed] * dt;
-    else {
+    if (p.crossing) {
+      p.position += Vec{std::cos(p.heading), std::sin(p.heading)} *
+                    (parameters[CrossingSpeed] * dt);
+    } else if (parameters[PredatorMode] == 0) {
       p.phase =
           std::fmod(p.phase + 2 * pi / parameters[OrbitPeriod] * dt, 2 * pi);
       p.position = {extent / 2 + parameters[OrbitRadius] * std::cos(p.phase),
                     extent / 2 + parameters[OrbitRadius] * std::sin(p.phase)};
-      p.heading = p.phase + pi / 2;
+      p.heading = std::remainder(p.phase + pi / 2, 2 * pi);
+    } else {
+      float turn = randomPredatorTurn(p) * dt;
+      if (parameters[PredatorMode] == 2) {
+        const Vec target = huntTarget(p.position);
+        if (length2(target) > 1e-8f) {
+          const float limit = parameters[PredatorTurnRate] * pi / 180 * dt;
+          turn = std::clamp(
+              angleDifference(p.heading, std::atan2(target.y, target.x)),
+              -limit, limit);
+        }
+      }
+      p.heading = std::remainder(p.heading + turn, 2 * pi);
+      p.position += Vec{std::cos(p.heading), std::sin(p.heading)} *
+                    (parameters[PredatorSpeed] * dt);
+      p.position = {wrap(p.position.x, extent), wrap(p.position.y, extent)};
     }
   }
   predators.erase(std::remove_if(predators.begin(), predators.end(),
@@ -293,16 +362,25 @@ int Simulation::crossingCount() const {
                            [](const auto &p) { return p.crossing; }));
 }
 bool Simulation::sendPredator() {
-  predators.push_back({{-16, extent * (.125f + random() * .75f)}, 0, 0, true});
+  const Vec start{-16, extent * (.125f + random() * .75f)};
+  const Vec destination{extent, random() * extent};
+  const float heading =
+      std::atan2(destination.y - start.y, destination.x - start.x);
+  predators.push_back({start, heading, 0, true, destination});
   return true;
 }
 void Simulation::addPredator() {
   if (orbitCount() >= 16)
     return;
+  if (orbitCount() == 0)
+    huntDensity.fill(0);
   std::vector<float> phases;
   for (auto &p : predators)
     if (!p.crossing)
-      phases.push_back(wrap(p.phase / (2 * pi) * size) / size * 2 * pi);
+      phases.push_back(wrap(std::atan2(p.position.y - extent / 2,
+                                       p.position.x - extent / 2) /
+                            (2 * pi) * size) /
+                       size * 2 * pi);
   std::sort(phases.begin(), phases.end());
   float phase = 0, gap = 0;
   if (!phases.empty())
@@ -316,9 +394,11 @@ void Simulation::addPredator() {
     }
   predators.push_back({{extent / 2 + parameters[OrbitRadius] * std::cos(phase),
                         extent / 2 + parameters[OrbitRadius] * std::sin(phase)},
-                       phase + pi / 2,
+                       std::remainder(phase + pi / 2, 2 * pi),
                        phase,
-                       false});
+                       false,
+                       {},
+                       uint32_t(random() * 16777216.f) ^ 0x9e3779b9u});
 }
 void Simulation::removePredator() {
   for (auto it = predators.end(); it != predators.begin();) {

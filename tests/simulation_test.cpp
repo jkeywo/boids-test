@@ -204,7 +204,7 @@ void launchAndMapTests() {
   launches.tick(1.f / 60);
   check(launches.crossingCount() == 70,
         "more than 32 predators survive simulation tick");
-  for (int i = 0; i < 400; ++i)
+  for (int i = 0; i < 600; ++i)
     launches.tick(1.f / 60);
   check(launches.crossingCount() == 0 && launches.orbitCount() == 16,
         "crossing predators exit independently of orbits");
@@ -218,7 +218,94 @@ void launchAndMapTests() {
   check(std::abs(distantIndex.state()[0].velocity.y) > 1,
         "late-index predators contribute flee force");
 }
+void predatorMovementTests() {
+  Simulation flights(0);
+  for (int i = 0; i < 32; ++i)
+    flights.sendPredator();
+  int angled = 0;
+  for (const auto &p : flights.predators) {
+    check(p.destination.x == 1024 && p.destination.y >= 0 &&
+              p.destination.y < 1024,
+          "crossing target is on the right edge");
+    check(near(p.position.y + std::tan(p.heading) * (1024 - p.position.x),
+               p.destination.y, .001f),
+          "crossing heading aims at its target");
+    angled += std::abs(p.heading) > .01f;
+  }
+  check(angled > 25, "crossing destinations produce varied diagonal paths");
+  flights.advanceEnvironment(.1f, false);
+  for (const auto &p : flights.predators)
+    check(p.position.x > -16, "crossings fly to the right");
+  flights.setWorldSize(256);
+  for (const auto &p : flights.predators)
+    check(p.destination.x == 256, "crossing targets rescale");
+
+  Simulation roaming(0);
+  roaming.setWorldSize(256);
+  roaming.setParameter(PredatorMode, 1);
+  roaming.addPredator();
+  roaming.addPredator();
+  check(roaming.predators[0].noiseSeed != roaming.predators[1].noiseSeed,
+        "independent predator noise seeds");
+  const float initial = roaming.predators[0].heading;
+  for (int step = 0; step < 600; step++) {
+    const float before = roaming.predators[0].heading;
+    roaming.advanceEnvironment(1.f / 60, false);
+    const auto &p = roaming.predators[0];
+    check(p.position.x >= 0 && p.position.x < 256 && p.position.y >= 0 &&
+              p.position.y < 256,
+          "random predators wrap");
+    check(std::abs(angleDifference(before, p.heading)) <=
+              roaming.parameter(PredatorTurnRate) * pi / 180 / 60 + .0001f,
+          "random turning is bounded");
+  }
+  check(std::abs(angleDifference(initial, roaming.predators[0].heading)) > .01f,
+        "Perlin steering changes heading");
+  check(roaming.orbitCount() == 2, "roaming residents remain active");
+
+  Simulation hunt(12);
+  for (int i = 0; i < 12; i++)
+    hunt.setBoid(i, i < 8 ? Vec{512, 650} : Vec{600, 512}, 0);
+  hunt.predators.push_back({{512, 512}, 0, 0, false});
+  hunt.setParameter(PredatorMode, 2);
+  hunt.setParameter(PredatorTurnRate, 720);
+  hunt.advanceEnvironment(.1f, false);
+  check(hunt.predators[0].heading > 1,
+        "hunt chooses denser cluster over closer sparse cluster");
+  check(hunt.huntDensityTotal() == 12, "native hunt density counts all boids");
+  hunt.predators[0].position = {512, 512};
+  hunt.predators[0].heading = 0;
+  hunt.setParameter(PredatorHuntRadius, 128);
+  hunt.advanceEnvironment(.1f, false);
+  check(std::abs(hunt.predators[0].heading) < .5f,
+        "hunt ignores concentration outside search radius");
+  for (int i = 0; i < 12; i++)
+    hunt.setBoid(i, {1018, 512}, 0);
+  hunt.predators[0].position = {4, 512};
+  hunt.predators[0].heading = pi / 2;
+  hunt.advanceEnvironment(.1f, false);
+  check(std::cos(hunt.predators[0].heading) < 0,
+        "hunt targets across toroidal seam");
+
+  Simulation external(0);
+  external.addPredator();
+  external.setParameter(PredatorMode, 2);
+  external.setParameter(PredatorHuntRadius, 768);
+  external.setParameter(PredatorTurnRate, 720);
+  external.predators[0].position = {512, 512};
+  external.predators[0].heading = 0;
+  std::array<uint32_t, cellCount> density{};
+  density[16 + 32 * 20] = 100000;
+  external.setHuntDensity(density);
+  external.advanceEnvironment(.1f, false, false);
+  check(external.predators[0].heading > 1 &&
+            external.huntDensityTotal() == 100000,
+        "GPU density drives hunt without CPU flock");
+  external.setWorldSize(256);
+  check(external.huntDensityTotal() == 0, "resizing invalidates density");
+}
 int main() {
+  predatorMovementTests();
   check(near(wrap(-1), 1023) && near(wrap(1024), 0) && near(wrap(2050), 2),
         "position wrapping");
   auto d = delta({2, 2}, {1022, 1022});
@@ -268,7 +355,7 @@ int main() {
   check(sim.orbitCount() == 0, "predator lower bound");
   check(sim.sendPredator() && sim.sendPredator() && sim.crossingCount() == 2,
         "multiple crossing predators launch together");
-  for (int i = 0; i < 400; ++i)
+  for (int i = 0; i < 600; ++i)
     sim.tick(1.f / 60);
   check(!sim.crossingActive(), "crossing predator exits");
   check(sim.state().size() == 100, "predators never remove boids");
