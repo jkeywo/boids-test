@@ -282,6 +282,10 @@ EMSCRIPTEN_KEEPALIVE double predator_value(int index, int field) {
     return p.speedMultiplier;
   case 7:
     return p.identity;
+  case 8:
+    return sim->predatorThreat(p).centre.x;
+  case 9:
+    return sim->predatorThreat(p).centre.y;
   default:
     return 0;
   }

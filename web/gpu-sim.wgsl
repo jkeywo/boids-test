@@ -366,16 +366,23 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
     desired += unit(difference(b.position, stateIn.values[parent].position))*p(P_SWARM_WEIGHT);
   }
   if (p(P_FLEE_ENABLED)>0.0&&p(P_FLEE_WEIGHT)>0.0) {
-    let radius = p(P_FLEE_RADIUS);
-    for (var i = 0u;i<cfg.counts.w;i++) {
-      let predator = predators.values[i];
-      var d = difference(predator.xy, b.position);
-      let q = dot(d, d);
-      if (q<radius*radius) {
-        if (q<1e-8) {
-          d = vec2(-predator.w, predator.z);
+    let inverseForward = 1.0/p(P_FLEE_RADIUS);
+    let inverseSide = 1.0/p(P_FLEE_SIDE_RADIUS);
+    for (var i=0u; i<cfg.counts.w; i++) {
+      let predator = predators.values[i*2u];
+      let centre = predators.values[i*2u+1u].xy;
+      let side = vec2(-predator.w, predator.z);
+      let d = difference(centre, b.position);
+      let longitudinal = dot(d, predator.zw)*inverseForward;
+      let lateral = dot(d, side)*inverseSide;
+      let squared = longitudinal*longitudinal+lateral*lateral;
+      if (squared<1.0) {
+        var away = side;
+        if (squared>=1e-8) {
+          let normal = predator.zw*(longitudinal*inverseForward)+side*(lateral*inverseSide);
+          away = normal*((1.0-sqrt(squared))*inverseSqrt(dot(normal, normal)));
         }
-        desired+=d*select(inverseSqrt(max(q,1e-8))-1.0/radius,1.0,q<1e-8)*p(P_FLEE_WEIGHT);
+        desired += away*p(P_FLEE_WEIGHT);
       }
     }
   }

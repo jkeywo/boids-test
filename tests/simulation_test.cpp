@@ -70,6 +70,7 @@ void neighbourReferenceTests() {
   flee.setWorldSize(256);
   for (auto id : {CohesionEnabled, AlignmentEnabled, RepulsionEnabled})
     flee.setParameter(id, 0);
+  flee.setParameter(FleeSideRadius, 100);
   flee.setParameter(SwarmEnabled, 1);
   flee.setParameter(TurnRate, 720);
   flee.setParameter(CrossingSpeed, 20);
@@ -79,10 +80,99 @@ void neighbourReferenceTests() {
   flee.tick(1);
   const Vec desired =
       Vec{1, 0} * flee.parameter(SwarmWeight) +
-      Flee{}({100, 100}, flee.predators, 100, 256) * flee.parameter(FleeWeight);
+      Flee{100, 100}(
+          {100, 100},
+          std::vector<PredatorThreat>{flee.predatorThreat(flee.predators[0])},
+          256) *
+          flee.parameter(FleeWeight);
   check(length2(flee.state()[1].velocity -
                 unit(desired) * flee.parameter(Speed)) < .0001f,
         "wide predator broadphase applies each predator once");
+}
+
+void predictedEllipseTests() {
+  Parameters settings;
+  check(near(settings[FleePrediction], .5f),
+        "prediction defaults to half a second");
+  Predator predator{{200, 300}, 0, 0, true};
+  predator.speedMultiplier = 1.2f;
+  auto threat = Flee::predict(predator, settings);
+  check(near(threat.centre.x, 308) && near(threat.centre.y, 300),
+        "crossing prediction includes fixed speed multiplier");
+  predator.crossing = false;
+  settings.set(PredatorMode, 1);
+  check(near(Flee::predict(predator, settings).centre.x, 260),
+        "random prediction uses roaming speed");
+  settings.set(PredatorMode, 2);
+  check(near(Flee::predict(predator, settings).centre.x, 260),
+        "hunt prediction uses roaming speed");
+  settings.set(PredatorMode, 0);
+  check(near(Flee::predict(predator, settings).centre.x,
+             200 + 2 * pi * 400 / 20 * 1.2f * .5f),
+        "orbit prediction uses tangential speed");
+  settings.set(FleePrediction, 0);
+  check(near(Flee::predict(predator, settings).centre.x, 200),
+        "zero prediction centres ellipse on predator");
+  settings.set(FleePrediction, 1.5f);
+  predator.crossing = true;
+  predator.position = {1000, 1000};
+  predator.heading = pi / 2;
+  threat = Flee::predict(predator, settings, 256);
+  check(near(threat.centre.x, 232) && near(threat.centre.y, 44),
+        "prediction wraps both axes and multiple map widths");
+  const Flee ellipse{80, 20};
+  const PredatorThreat horizontal{{100, 100}, {1, 0}},
+      vertical{{100, 100}, {0, 1}};
+  check(ellipse.from({170, 100}, horizontal, 1024).x > 0,
+        "long axis includes points beyond side radius");
+  check(length2(ellipse.from({100, 125}, horizontal, 1024)) == 0,
+        "short axis excludes points inside old circle");
+  check(ellipse.from({100, 115}, horizontal, 1024).y > 0,
+        "short axis repels inside ellipse");
+  check(length2(ellipse.from({180, 100}, horizontal, 1024)) == 0,
+        "ellipse boundary has zero force");
+  check(ellipse.from({100, 170}, vertical, 1024).y > 0 &&
+            length2(ellipse.from({125, 100}, vertical, 1024)) == 0,
+        "ellipse rotates with predator heading");
+  const Vec diagonal = ellipse.from({140, 110}, horizontal, 1024);
+  check(near(diagonal.y / diagonal.x, 4, .0001f),
+        "flee follows outward ellipse normal");
+  check(near(ellipse.from({140, 100}, horizontal, 1024).x, .5f) &&
+            near(ellipse.from({100, 110}, horizontal, 1024).y, .5f),
+        "falloff uses elliptical distance on both axes");
+  const Vec centre = ellipse.from({100, 100}, horizontal, 1024);
+  check(Flee{256, 256}.from({100.03f, 100}, horizontal, 1024).x > .99f,
+        "large ellipse normal remains nonzero close to centre");
+  check(near(centre.x, 0) && near(centre.y, 1),
+        "coincident centre has finite lateral escape");
+  check(ellipse.from({4, 100}, {{1020, 100}, {1, 0}}, 1024).x > 0,
+        "ellipse wraps horizontal seam");
+  check(ellipse.from({100, 4}, {{100, 1020}, {0, 1}}, 1024).y > 0,
+        "ellipse wraps vertical seam");
+  Simulation projected(1);
+  for (auto id : {CohesionEnabled, AlignmentEnabled, RepulsionEnabled})
+    projected.setParameter(id, 0);
+  projected.setParameter(FleeRadius, 24);
+  projected.setParameter(FleeSideRadius, 8);
+  projected.setParameter(FleePrediction, 2);
+  projected.setParameter(CrossingSpeed, 400);
+  projected.predators.push_back({{10, 10}, 0, 0, true});
+  projected.setBoid(0, {820, 14}, pi / 2);
+  projected.tick(1.f / 60);
+  check(projected.state()[0].velocity.x > 1,
+        "CPU broadphase finds projected ellipse far from current predator");
+  Simulation wide(1);
+  for (auto id : {CohesionEnabled, AlignmentEnabled, RepulsionEnabled})
+    wide.setParameter(id, 0);
+  wide.setParameter(FleeRadius, 1);
+  wide.setParameter(FleeSideRadius, 256);
+  wide.setParameter(FleePrediction, 0);
+  wide.setParameter(CrossingSpeed, 20);
+  wide.predators.push_back({{100, 100}, 0, 0, true});
+  wide.setBoid(0, {100, 340}, pi / 2);
+  wide.tick(1.f / 60);
+  check(wide.state()[0].velocity.x < -1,
+        "CPU broadphase bounds both ellipse axes");
 }
 
 void tuningTests() {
@@ -143,6 +233,7 @@ void tuningTests() {
   Simulation flee(1);
   for (auto id : {CohesionEnabled, AlignmentEnabled, RepulsionEnabled})
     flee.setParameter(id, 0);
+  flee.setParameter(FleePrediction, 0);
   flee.setBoid(0, {0, 100}, 0);
   flee.predators.push_back({{150, 100}, 0, 0, true});
   flee.tick(1.f / 60);
@@ -280,6 +371,7 @@ void launchAndMapTests() {
         "crossing predators exit independently of orbits");
   // Only a predator beyond the former bitmask capacity is close enough to flee.
   Simulation distantIndex(1);
+  distantIndex.setParameter(FleePrediction, 0);
   distantIndex.setBoid(0, {4, 512}, pi);
   for (int i = 0; i < 69; ++i)
     distantIndex.predators.push_back({{512, 512}, 0, 0, true});
@@ -506,7 +598,7 @@ int main() {
   Shoal{}(b, pi / 2, 1.f / 60, true);
   Shoal{}(b, 0, 1.f / 60, false);
   check(b.boost == 0 && b.cooldown == 0, "disable clears boost");
-  std::vector<Predator> p{{{1020, 500}, 0, 0, false}};
+  std::vector<PredatorThreat> p{{{1020, 500}, {1, 0}}};
   check(Flee{}({4, 500}, p).x > 0, "predator flee wraps seam");
   check(length2(Flee{}({500, 500}, p)) == 0, "predator radius");
   NeighbourBudgetController quality;
@@ -540,6 +632,7 @@ int main() {
   check(!sim.crossingActive(), "crossing predator exits");
   check(sim.state().size() == 100, "predators never remove boids");
   Simulation threat(1);
+  threat.setParameter(FleePrediction, 0);
   threat.setBoid(0, {4, 512}, pi);
   threat.predators.push_back({{1020, 512}, 0, 0, true});
   threat.tick(1.f / 60);
@@ -578,6 +671,7 @@ int main() {
               boid.position.y >= 0 && boid.position.y < 256 &&
               std::isfinite(boid.position.y),
           "dense 256 cluster stable at maximum interaction radius");
+  predictedEllipseTests();
   neighbourReferenceTests();
   tuningTests();
   launchAndMapTests();

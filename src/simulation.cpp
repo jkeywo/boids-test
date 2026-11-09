@@ -29,6 +29,7 @@ Simulation::Simulation(int count)
     : query(world.query<Boid>()), snapshot(count), packed(count),
       plans(cellCount), previousPositions(count) {
   predators.reserve(32);
+  predatorThreats.reserve(32);
   for (auto &cell : predatorCells)
     cell.reserve(16);
   for (int i = 0; i < count; ++i) {
@@ -411,17 +412,24 @@ void Simulation::tick(float dt) {
   // Cell lists retain all active predators, including launches beyond 32.
   for (auto &cell : predatorCells)
     cell.clear();
-  const bool allPredators =
-      std::ceil(parameters[FleeRadius] / (extent / 8)) >= 4;
-  if (parameters[FleeEnabled] && parameters[FleeWeight] > 0 && !allPredators) {
-    int ring = int(std::ceil(parameters[FleeRadius] / (extent / 8)));
-    for (const auto &predator : predators) {
-      int cx = int(wrap(predator.position.x, extent) / (extent / 8));
-      int cy = int(wrap(predator.position.y, extent) / (extent / 8));
-      for (int dy = -ring; dy <= ring; ++dy)
-        for (int dx = -ring; dx <= ring; ++dx)
-          predatorCells[((cx + dx + 8) & 7) + 8 * ((cy + dy + 8) & 7)]
-              .push_back(&predator);
+  const float threatRadius =
+      std::max(parameters[FleeRadius], parameters[FleeSideRadius]);
+  const bool allPredators = std::ceil(threatRadius / (extent / 8)) >= 4;
+  const Flee flee{parameters[FleeRadius], parameters[FleeSideRadius]};
+  predatorThreats.clear();
+  if (parameters[FleeEnabled] && parameters[FleeWeight] > 0) {
+    for (const auto &predator : predators)
+      predatorThreats.push_back(predatorThreat(predator));
+    if (!allPredators) {
+      const int ring = int(std::ceil(threatRadius / (extent / 8)));
+      for (const auto &threat : predatorThreats) {
+        const int cx = int(threat.centre.x / (extent / 8)),
+                  cy = int(threat.centre.y / (extent / 8));
+        for (int dy = -ring; dy <= ring; ++dy)
+          for (int dx = -ring; dx <= ring; ++dx)
+            predatorCells[((cx + dx + 8) & 7) + 8 * ((cy + dy + 8) & 7)]
+                .push_back(&threat);
+      }
     }
   }
 #ifdef BOIDS_PROFILE
@@ -455,11 +463,11 @@ void Simulation::tick(float dt) {
     if (parameters[FleeEnabled] && parameters[FleeWeight] > 0)
       desired +=
           (allPredators
-               ? Flee{}(b.position, predators, parameters[FleeRadius], extent)
-               : Flee{}(b.position,
-                        predatorCells[int(b.position.x / (extent / 8)) +
-                                      8 * int(b.position.y / (extent / 8))],
-                        parameters[FleeRadius], extent)) *
+               ? flee(b.position, predatorThreats, extent)
+               : flee(b.position,
+                      predatorCells[int(b.position.x / (extent / 8)) +
+                                    8 * int(b.position.y / (extent / 8))],
+                      extent)) *
           parameters[FleeWeight];
     if (parameters[WindEnabled] && parameters[WindWeight] > 0)
       desired += windAt(b.position);

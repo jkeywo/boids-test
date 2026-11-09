@@ -60,6 +60,8 @@ async function setSimulationMode(requested) {
           x: moduleInstance._predator_value(i, 0),
           y: moduleInstance._predator_value(i, 1),
           heading: moduleInstance._predator_value(i, 2),
+          avoidanceX: moduleInstance._predator_value(i, 8),
+          avoidanceY: moduleInstance._predator_value(i, 9),
         }),
         step: (dt) => moduleInstance._gpu_control_step(dt),
         onError: (message) => {
@@ -570,6 +572,8 @@ window.boidsTest = {
       crossing: !!moduleInstance._predator_value(i, 5),
       speedMultiplier: moduleInstance._predator_value(i, 6),
       identity: moduleInstance._predator_value(i, 7),
+      avoidanceX: moduleInstance._predator_value(i, 8),
+      avoidanceY: moduleInstance._predator_value(i, 9),
     }));
   },
   get predatorCount() {

@@ -128,7 +128,7 @@ export class GPUBoids {
       usage: GPUBufferUsage.STORAGE,
     });
     this.configArena = new ArrayBuffer(this.configBytes);
-    this.predatorArena = new Float32Array(32 * 4);
+    this.predatorArena = new Float32Array(32 * 8);
     this.cellIndices = d.createBuffer({
       label: "Bounded spatial representatives",
       size: 1024 * 128 * 4,
@@ -140,7 +140,7 @@ export class GPUBoids {
       usage: GPUBufferUsage.STORAGE,
     });
     this.predatorCapacity = 32;
-    this.predatorStride = aligned(this.predatorCapacity * 16);
+    this.predatorStride = aligned(this.predatorCapacity * 32);
     this.predators = d.createBuffer({
       label: "Predators per tick",
       size: this.predatorStride * MAX_STEPS,
@@ -336,7 +336,7 @@ export class GPUBoids {
   ensurePredators(count) {
     if (count <= this.predatorCapacity) return;
     this.predatorCapacity = Math.max(count, this.predatorCapacity * 2);
-    this.predatorStride = aligned(this.predatorCapacity * 16);
+    this.predatorStride = aligned(this.predatorCapacity * 32);
     const old = this.predators;
     this.predators = this.device.createBuffer({
       size: this.predatorStride * MAX_STEPS,
@@ -386,13 +386,25 @@ export class GPUBoids {
       slot * this.uniformStride,
       buffer,
     );
-    const length = Math.max(4, predatorCount * 4);
+    const length = Math.max(8, predatorCount * 8);
     if (this.predatorArena.length < length)
       this.predatorArena = new Float32Array(length * 2);
     const data = this.predatorArena.subarray(0, length);
     for (let i = 0; i < predatorCount; i++) {
       const p = this.bridge.predator(i);
-      data.set([p.x, p.y, Math.cos(p.heading), Math.sin(p.heading)], i * 4);
+      data.set(
+        [
+          p.x,
+          p.y,
+          Math.cos(p.heading),
+          Math.sin(p.heading),
+          p.avoidanceX,
+          p.avoidanceY,
+          0,
+          0,
+        ],
+        i * 8,
+      );
     }
     this.device.queue.writeBuffer(
       this.predators,

@@ -29,8 +29,8 @@ namespace boids {
     1.6, false)                                                                \
   X(FleeEnabled, "flee-enabled", "Predator flee", "Enabled", "", 0, 1, 1, 1,   \
     true)                                                                      \
-  X(FleeRadius, "flee-radius", "Predator flee", "Radius", "u", 1, 256, 1, 100, \
-    false)                                                                     \
+  X(FleeRadius, "flee-radius", "Predator flee", "Forward radius", "u", 1, 256, \
+    1, 100, false)                                                             \
   X(FleeWeight, "flee-weight", "Predator flee", "Weight", "", 0, 12, .1, 5,    \
     false)                                                                     \
   X(ShoalEnabled, "shoal-enabled", "Shoal boost", "Enabled", "", 0, 1, 1, 0,   \
@@ -86,7 +86,11 @@ namespace boids {
   X(PredatorHuntRadius, "predator-hunt-radius", "Predators", "Hunt radius",    \
     "u", 16, 768, 4, 192, false)                                               \
   X(SwarmEnabled, "swarm-enabled", "Swarm", "Enabled", "", 0, 1, 1, 0, true)   \
-  X(SwarmWeight, "swarm-weight", "Swarm", "Weight", "", 0, 5, .05, 1, false)
+  X(SwarmWeight, "swarm-weight", "Swarm", "Weight", "", 0, 5, .05, 1, false)   \
+  X(FleeSideRadius, "flee-side-radius", "Predator flee", "Side radius", "u",   \
+    1, 256, 1, 50, false)                                                      \
+  X(FleePrediction, "flee-prediction", "Predator flee", "Prediction time",     \
+    "s", 0, 3, .05, .5, false)
 enum Parameter {
 #define ENUM(id, ...) id,
   BOID_PARAMETERS(ENUM)

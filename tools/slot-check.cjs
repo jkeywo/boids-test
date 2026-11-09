@@ -22,6 +22,8 @@ module.exports = async function checkSlots(page) {
     boidsTest.setParameter("boid-hue", 10);
     boidsTest.setParameter("swarm-enabled", 1);
     boidsTest.setParameter("swarm-weight", 2.25);
+    boidsTest.setParameter("flee-prediction", 1.25);
+    boidsTest.setParameter("flee-side-radius", 37);
     boidsTest.setParameter("crossing-speed", 20);
     boidsTest.setParameter("predator-speed", 95);
     boidsTest.setParameter("predator-mode", 1);
@@ -60,6 +62,8 @@ module.exports = async function checkSlots(page) {
   await choose(1);
   assert.equal((await settings()).speed, 71);
   assert.equal((await settings())["swarm-weight"], 2.25);
+  assert.equal((await settings())["flee-prediction"], 1.25);
+  assert.equal((await settings())["flee-side-radius"], 37);
   assert.equal((await settings())["swarm-enabled"], 1);
   assert.equal(
     await page.evaluate(() => boidsTest.worldSize),

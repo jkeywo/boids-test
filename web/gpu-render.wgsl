@@ -41,7 +41,7 @@ fn p(id: u32) -> f32 { return cfg.params[id / 4u][id % 4u]; }
   var color: vec3<f32>;
   var scale = .5;
   if (id>=cfg.counts.x) {
-    let predator = predators.values[id-cfg.counts.x];
+    let predator = predators.values[(id-cfg.counts.x)*2u];
     point = predator.xy;
     direction = predator.zw;
     color = vec3(1.0, .27, .32);

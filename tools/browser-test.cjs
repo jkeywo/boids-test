@@ -378,7 +378,7 @@ const server = http.createServer((req, res) => {
       document.querySelector("#parameter-controls").scrollTop = 0;
       return { sliders, toggles };
     });
-    assert.equal(controlReport.sliders, 35);
+    assert.equal(controlReport.sliders, 37);
     assert.equal(controlReport.toggles, 9);
     await page.selectOption("#map-size", "512");
     assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 512);

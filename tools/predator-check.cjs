@@ -109,6 +109,40 @@ module.exports = async function checkPredatorModes(page) {
   const orbit = await page.evaluate(() => boidsTest.predators());
   for (const p of orbit)
     assert(Math.abs(Math.hypot(p.x - 128, p.y - 128) - 100) < 0.01);
+  for (const mode of [0, 1, 2])
+    for (const prediction of [0, 0.5, 3]) {
+      const maximumError = await page.evaluate(
+        ({ mode, prediction }) => {
+          boidsTest.setParameter("predator-mode", mode);
+          boidsTest.setParameter("flee-prediction", prediction);
+          const settings = boidsTest.settings(),
+            width = boidsTest.worldSize;
+          const wrap = (value) => ((value % width) + width) % width;
+          return Math.max(
+            ...boidsTest.predators().map((p) => {
+              const speed =
+                (p.crossing
+                  ? settings["crossing-speed"]
+                  : mode === 0
+                    ? (2 * Math.PI * settings["orbit-radius"]) /
+                      settings["orbit-period"]
+                    : settings["predator-speed"]) * p.speedMultiplier;
+              const x = wrap(p.x + Math.cos(p.heading) * speed * prediction),
+                y = wrap(p.y + Math.sin(p.heading) * speed * prediction);
+              const delta = (a, b) =>
+                Math.min(Math.abs(a - b), width - Math.abs(a - b));
+              return Math.hypot(delta(x, p.avoidanceX), delta(y, p.avoidanceY));
+            }),
+          );
+        },
+        { mode, prediction },
+      );
+      assert(
+        maximumError < 0.002,
+        `predicted centre mode=${mode} time=${prediction}: ${maximumError}`,
+      );
+    }
+  await page.evaluate(() => boidsTest.setParameter("predator-mode", 0));
   const fixed = await page.evaluate(() =>
     boidsTest.predators().map((p) => [p.identity, p.speedMultiplier]),
   );

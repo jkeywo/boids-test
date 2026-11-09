@@ -95,29 +95,55 @@ struct Swarm {
                : Vec{};
   }
 };
+struct PredatorThreat {
+  Vec centre, forward;
+};
 struct Flee {
-  static Vec from(Vec p, const Predator &q, float radius, float extent) {
-    Vec d = delta(q.position, p, extent);
-    const float squared = length2(d);
-    if (squared >= radius * radius)
+  float inverseForward, inverseSide;
+  explicit Flee(float forwardRadius = 100, float sideRadius = 50)
+      : inverseForward(1 / forwardRadius), inverseSide(1 / sideRadius) {}
+  static PredatorThreat predict(const Predator &p, const Parameters &settings,
+                                float extent = size) {
+    const Vec forward{std::cos(p.heading), std::sin(p.heading)};
+    const float speed =
+        (p.crossing ? settings[CrossingSpeed]
+         : settings[PredatorMode] == 0
+             ? 2 * pi * settings[OrbitRadius] / settings[OrbitPeriod]
+             : settings[PredatorSpeed]) *
+        p.speedMultiplier;
+    const Vec future =
+        p.position + forward * (speed * settings[FleePrediction]);
+    return {{wrap(future.x, extent), wrap(future.y, extent)}, forward};
+  }
+  Vec from(Vec position, const PredatorThreat &threat, float extent) const {
+    const Vec d = delta(threat.centre, position, extent),
+              side{-threat.forward.y, threat.forward.x};
+    const float longitudinal =
+        (d.x * threat.forward.x + d.y * threat.forward.y) * inverseForward;
+    const float lateral = (d.x * side.x + d.y * side.y) * inverseSide;
+    const float squared = longitudinal * longitudinal + lateral * lateral;
+    if (squared >= 1)
       return {};
     if (squared < 1e-8f)
-      return Vec{std::cos(q.heading + pi / 2), std::sin(q.heading + pi / 2)} *
-             (1 - std::sqrt(squared) / radius);
-    return d * (1 / std::sqrt(squared) - 1 / radius);
+      return side;
+    // Outward ellipse normal encourages boids to move around the flight path.
+    const Vec normal = threat.forward * (longitudinal * inverseForward) +
+                       side * (lateral * inverseSide);
+    return normal * ((1 - std::sqrt(squared)) / std::sqrt(length2(normal)));
   }
-  Vec operator()(Vec p, const std::vector<Predator> &predators,
-                 float radius = 100, float extent = size) const {
+  Vec operator()(Vec position, const std::vector<PredatorThreat> &threats,
+                 float extent = size) const {
     Vec force;
-    for (const auto &q : predators)
-      force += from(p, q, radius, extent);
+    for (const auto &threat : threats)
+      force += from(position, threat, extent);
     return force;
   }
-  Vec operator()(Vec p, const std::vector<const Predator *> &predators,
-                 float radius, float extent) const {
+  Vec operator()(Vec position,
+                 const std::vector<const PredatorThreat *> &threats,
+                 float extent = size) const {
     Vec force;
-    for (const auto *q : predators)
-      force += from(p, *q, radius, extent);
+    for (const auto *threat : threats)
+      force += from(position, *threat, extent);
     return force;
   }
 };
@@ -206,7 +232,8 @@ class Simulation {
 
   std::array<int, cellCount + 1> offsets{};
   std::array<int, cellCount> counts{}, cursor{};
-  std::array<std::vector<const Predator *>, 64> predatorCells;
+  std::array<std::vector<const PredatorThreat *>, 64> predatorCells;
+  std::vector<PredatorThreat> predatorThreats;
   std::array<Vec, cellCount> windPrevious{}, windNext{}, windBlended{};
   Parameters parameters;
   std::array<uint32_t, cellCount> huntDensity{};
@@ -239,6 +266,9 @@ public:
 #endif
   std::vector<Predator> predators;
   explicit Simulation(int count = population);
+  PredatorThreat predatorThreat(const Predator &p) const {
+    return Flee::predict(p, parameters, extent);
+  }
   void tick(float dt);
   void resetInterpolation();
   void writeRenderInstances(std::vector<float> &output, float alpha);

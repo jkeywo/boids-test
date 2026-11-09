@@ -85,6 +85,7 @@ const server = http.createServer((req, res) => {
       adapterAvailable,
       "GPU test requires a WebGPU adapter; use GPU_SOFTWARE=1 for CI",
     );
+    await require("./ellipse-check.cjs")(page);
     await page.selectOption("#simulation-mode", "gpu");
     await page.waitForFunction(() => boidsTest.mode === "gpu", null, {
       timeout: 90000,
