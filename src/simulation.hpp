@@ -204,16 +204,27 @@ struct Shoal {
 struct Wind {
   Vec operator()(Vec position, float time, const Parameters &p) const {
     Vec result;
-    float amplitude = 1, total = 0, frequency = 1 / p[WindScale],
+    const float extent = size * p.spatialScale;
+    float amplitude = 1, total = 0, frequency = extent / p[WindScale],
           z = time * p[WindTime];
     for (int octave = 0; octave < int(p[WindOctaves]); ++octave) {
+      // Remove frequencies that the cached field cannot resolve.
+      const float baseFrequency = extent / p[WindScale];
+      const float nyquist = baseFrequency > 32   ? 128.f
+                            : baseFrequency > 16 ? 64.f
+                                                 : 32.f;
+      const float cut =
+          std::clamp((nyquist - frequency) / (nyquist * .5f), 0.f, 1.f);
+      const float weight = amplitude * cut * cut * (3 - 2 * cut);
+      if (weight == 0)
+        break;
       result.x +=
-          amplitude * Perlin3D::sample(position.x * frequency,
-                                       position.y * frequency, z, 0x1234abcdu);
+          weight * Perlin3D::tiled(position.x / extent, position.y / extent, z,
+                                   frequency, 0x1234abcdu);
       result.y +=
-          amplitude * Perlin3D::sample(position.x * frequency,
-                                       position.y * frequency, z, 0xa74f53c1u);
-      total += amplitude;
+          weight * Perlin3D::tiled(position.x / extent, position.y / extent, z,
+                                   frequency, 0xa74f53c1u);
+      total += weight;
       amplitude *= p[WindPersistence];
       frequency *= p[WindLacunarity];
       z *= p[WindLacunarity];
@@ -258,20 +269,25 @@ class Simulation {
     float index;
   };
   struct SampleBucket {
-    int offset = 0, count = 0, take = 0;
-    float stride = 0;
+    int offset = 0, count = 0, cumulative = 0;
   };
-  // Nine rotated remainder allocations preserve the original sampling quotas.
+  // Cumulative actual populations support unbiased systematic sampling.
   using SamplePlan = std::array<SampleBucket, 9>;
   std::vector<NeighbourRecord> packed;
-  std::vector<std::array<SamplePlan, 9>> plans;
+  std::vector<SamplePlan> plans;
+  Vec gridShift;
+  friend struct SamplingTestAccess;
   std::vector<Vec> previousPositions;
 
   std::array<int, cellCount + 1> offsets{};
   std::array<int, cellCount> counts{}, cursor{};
   std::array<std::vector<const PredatorThreat *>, 64> predatorCells;
   std::vector<PredatorThreat> predatorThreats;
-  std::array<Vec, cellCount> windPrevious{}, windNext{}, windBlended{};
+  static constexpr int windCount = 256 * 256;
+  int windSide = 128;
+  std::vector<Vec> windPrevious = std::vector<Vec>(windCount),
+                   windNext = std::vector<Vec>(windCount),
+                   windBlended = std::vector<Vec>(windCount);
   Parameters parameters;
   std::array<uint32_t, cellCount> huntDensity{};
   uint32_t randomState = 0x12345678, predatorSerial = 0;
@@ -284,7 +300,13 @@ class Simulation {
   float random();
   void assignPredatorIdentity(Predator &predator);
   int cell(Vec p) const {
-    return int(p.x / cellWidth) + gridSide * int(p.y / cellWidth);
+    p += gridShift;
+    if (p.x >= extent)
+      p.x -= extent;
+    if (p.y >= extent)
+      p.y -= extent;
+    return std::min(gridSide - 1, int(p.x / cellWidth)) +
+           gridSide * std::min(gridSide - 1, int(p.y / cellWidth));
   }
   void configureGrid();
   void buildGrid();
@@ -293,7 +315,7 @@ class Simulation {
   void updateHuntDensity();
   float randomPredatorTurn(const Predator &p) const;
   Vec huntTarget(Vec position) const;
-  void fillWind(std::array<Vec, cellCount> &field, float time);
+  void fillWind(std::vector<Vec> &field, float time);
 
 public:
 #ifdef BOIDS_PROFILE

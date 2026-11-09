@@ -87,6 +87,7 @@ const server = http.createServer((req, res) => {
     );
     await require("./population-check.cjs")(page, "gpu");
     await require("./ellipse-check.cjs")(page);
+    await require("./tiling-check.cjs")(page);
     await page.selectOption("#simulation-mode", "gpu");
     await page.waitForFunction(() => boidsTest.mode === "gpu", null, {
       timeout: 90000,

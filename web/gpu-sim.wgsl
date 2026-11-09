@@ -39,10 +39,10 @@ struct Vectors {
 @group(0) @binding(5) var<storage, read_write> wind: Vectors;
 @group(0) @binding(6) var<storage, read> predators: Vectors;
 @group(0) @binding(7) var<storage, read_write> huntDensity: Counts;
-struct Plans { values: array<vec4<u32>> }
+struct Plans { values: array<atomic<u32>> }
 @group(0) @binding(8) var<storage, read_write> plans: Plans;
 const PI: f32 = 3.14159265359;
-// Each cell keeps a rotating bounded pool; every boid is still integrated.
+// Dense cells keep hash-selected representatives; every boid is integrated.
 const POOL: u32 = 128u;
 fn p(id: u32) -> f32 {
   return cfg.params[id/4u][id%4u];
@@ -78,7 +78,8 @@ fn unit(v: vec2<f32>) -> vec2<f32> {
   return vec2(0.0);
 }
 fn cell(position: vec2<f32>) -> u32 {
-  let xy = min(vec2<u32>(position/cfg.data.x*f32(cfg.counts.y)), vec2(cfg.counts.y-1u));
+  let shift = vec2(random(cfg.misc.x^0x51ed270bu), random(cfg.misc.x^0x9e3779b9u));
+  let xy = min(vec2<u32>(fract(position/cfg.data.x+shift/f32(cfg.counts.y))*f32(cfg.counts.y)), vec2(cfg.counts.y-1u));
   return xy.x+xy.y*cfg.counts.y;
 }
 fn fade(t: vec3<f32>) -> vec3<f32> {
@@ -124,15 +125,19 @@ fn gradient(h: u32, v: vec3<f32>) -> f32 {
     }
   }
 }
-fn noise(v: vec3<f32>, seed: u32) -> f32 {
-  let lattice = vec3<i32>(floor(v));
+fn noise(v: vec3<f32>, seed: u32, period: i32) -> f32 {
+  var lattice = vec3<i32>(floor(v));
+  lattice.x=((lattice.x%period)+period)%period;
+  lattice.y=((lattice.y%period)+period)%period;
   let f = fract(v);
   let weights = fade(f);
   var result = 0.0;
   for (var z = 0;z<2;z++) {
     for (var y = 0;y<2;y++) {
       for (var x = 0;x<2;x++) {
-        let c = lattice+vec3(x, y, z);
+        var c = lattice+vec3(x, y, z);
+        c.x=select(c.x,0,c.x==period);
+        c.y=select(c.y,0,c.y==period);
         var h = (bitcast<u32>(c.x)*0x8da6b343u)^(bitcast<u32>(c.y)*0xd8163841u)^(bitcast<u32>(c.z)*0xcb1ab31fu)^seed;
         h^=h>>16u;
         h*=0x7feb352du;
@@ -144,19 +149,24 @@ fn noise(v: vec3<f32>, seed: u32) -> f32 {
   }
   return result;
 }
+fn tiled(position: vec2<f32>, z: f32, frequency: f32, seed: u32) -> f32 {
+  let n=u32(floor(frequency)); let t=fract(frequency);
+  let a=noise(vec3(position*f32(n)+vec2(.371,.619),z),seed^(n*0x9e3779b9u),i32(n));
+  if(t==0.0){return a;}
+  let b=noise(vec3(position*f32(n+1u)+vec2(.371,.619),z),seed^((n+1u)*0x9e3779b9u),i32(n+1u));
+  return mix(a,b,t)*inverseSqrt((1.0-t)*(1.0-t)+t*t);
+}
+fn windSide() -> u32 { return select(select(64u,128u,cfg.data.x/p(P_WIND_SCALE)>16.0),256u,cfg.data.x/p(P_WIND_SCALE)>32.0); }
 fn fractal(position: vec2<f32>, time: f32) -> vec2<f32> {
-  var result = vec2(0.0);
-  var amplitude = 1.0;
-  var total = 0.0;
-  var frequency = 1.0/p(P_WIND_SCALE);
-  var z = time*p(P_WIND_TIME);
-  for (var octave = 0u;octave<u32(p(P_WIND_OCTAVES));octave++) {
-    let v = vec3(position*frequency, z);
-    result+=amplitude*vec2(noise(v, 0x1234abcdu), noise(v, 0xa74f53c1u));
-    total+=amplitude;
-    amplitude*=p(P_WIND_PERSISTENCE);
-    frequency*=p(P_WIND_LACUNARITY);
-    z*=p(P_WIND_LACUNARITY);
+  var result=vec2(0.0);var amplitude=1.0;var total=0.0;
+  var frequency=cfg.data.x/p(P_WIND_SCALE);var z=time*p(P_WIND_TIME);
+  let nyquist=f32(windSide())*.5;
+  for(var octave=0u;octave<u32(p(P_WIND_OCTAVES));octave++) {
+    let cut=clamp((nyquist-frequency)/(nyquist*.5),0.0,1.0);
+    let weight=amplitude*cut*cut*(3.0-2.0*cut);
+    if(weight==0.0){break;}
+    result+=weight*vec2(tiled(position/cfg.data.x,z,frequency,0x1234abcdu),tiled(position/cfg.data.x,z,frequency,0xa74f53c1u));
+    total+=weight;amplitude*=p(P_WIND_PERSISTENCE);frequency*=p(P_WIND_LACUNARITY);z*=p(P_WIND_LACUNARITY);
   }
   return result/total;
 }
@@ -212,86 +222,63 @@ fn permutation(input: u32, inverse: bool) -> u32 {
   b.velocity *= cfg.scale.x;
   stateOut.values[id] = b;
 }
+// Hash-stratified min-hash representatives are independent of invocation order.
+// First 1024*128 words hold min-hash keys. Each cell then has 32 words
+// for its actual-population CDF, representative count and sentinel identity.
+const META: u32 = 131072u;
+fn planBase(c:u32) -> u32 { return META+c*32u; }
+fn unhash(input:u32) -> u32 {
+  var h=input;h^=h>>16u;h*=1124208931u;h^=(h>>15u)^(h>>30u);h*=493478565u;return h^(h>>16u);
+}
 @compute @workgroup_size(128) fn clearCells(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x<1024u) {
-    atomicStore(&cellCounts.values[gid.x], 0u);
-    atomicStore(&huntDensity.values[gid.x], 0u);
-  }
+  let c=gid.x;if(c>=1024u){return;}
+  atomicStore(&cellCounts.values[c],0u);atomicStore(&huntDensity.values[c],0u);
+  atomicStore(&plans.values[planBase(c)+21u],0u);
+  for(var j=0u;j<POOL;j++){atomicStore(&plans.values[c*POOL+j],0xffffffffu);}
 }
-// Rotate invocation order to avoid permanently preferring the same dense-cell IDs.
 @compute @workgroup_size(128) fn binBoids(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x>=cfg.counts.x) {
-    return;
+  let id=gid.x;if(id>=cfg.counts.x){return;}
+  if(cfg.misc.z!=0u){
+    let xy=min(vec2<u32>(stateIn.values[id].position/cfg.data.x*32.0),vec2(31u));
+    atomicAdd(&huntDensity.values[xy.x+32u*xy.y],1u);
   }
-  var id = gid.x+cfg.misc.y;
-  if (id>=cfg.counts.x) {
-    id-=cfg.counts.x;
-  }
-  if (cfg.misc.z != 0u) {
-    let xy = min(vec2<u32>(stateIn.values[id].position / cfg.data.x * 32.0), vec2(31u));
-    atomicAdd(&huntDensity.values[xy.x + 32u * xy.y], 1u);
-  }
-  let c = cell(stateIn.values[id].position);
-  let slot = atomicAdd(&cellCounts.values[c], 1u);
-  if (slot<POOL) {
-    cellIndices.values[c*POOL+slot] = id;
-  }
+  let c=cell(stateIn.values[id].position);
+  let slot=atomicAdd(&cellCounts.values[c],1u);
+  if(slot<POOL){cellIndices.values[c*POOL+slot]=id;}
+  let key=hash(id^(cfg.misc.x*2246822519u));
+  atomicMin(&plans.values[c*POOL+(key&127u)],key);
+  if(key==0xffffffffu){atomicStore(&plans.values[planBase(c)+21u],id+1u);}
 }
-// Allocation depends only on the cell and the rotated remainder offset, not
-// on the boid. Keep identical candidate quotas while sharing this work.
 @compute @workgroup_size(128) fn preparePlans(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let side = cfg.counts.y;
-  let bucketCount = select(9u, 4u, side==2u);
-  let c = gid.x/9u;
-  let first = gid.x%9u;
-  if (c>=side*side || first>=bucketCount) {
-    return;
-  }
-  if (atomicLoad(&cellCounts.values[c])==0u) {
-    return;
-  }
-  let xy = vec2<i32>(i32(c%side), i32(c/side));
-  var buckets: array<u32, 9>;
-  var sizes: array<u32, 9>;
-  var samples: array<u32, 9>;
-  var total = 0u;
-  for (var j=0u; j<bucketCount; j++) {
-    var other = j;
-    if (side!=2u) {
-      let v = (xy+vec2<i32>(i32(j%3u)-1, i32(j/3u)-1))&vec2<i32>(i32(side)-1);
-      other = u32(v.x)+side*u32(v.y);
-    }
-    buckets[j] = other;
-    sizes[j] = min(atomicLoad(&cellCounts.values[other]), POOL);
-    total += sizes[j];
-  }
-  let budget = min(total, cfg.counts.z);
-  let ratio = f32(budget)/f32(max(total, 1u));
-  var assigned = 0u;
-  for (var j=0u; j<bucketCount; j++) {
-    samples[j] = min(sizes[j], u32(f32(sizes[j])*ratio));
-    assigned += samples[j];
-  }
-  var remaining = budget-assigned;
-  for (var k=0u; k<bucketCount && remaining>0u; k++) {
-    var j = k+first;
-    if (j>=bucketCount) { j-=bucketCount; }
-    if (samples[j]<sizes[j]) {
-      samples[j]++;
-      remaining--;
+  let c=gid.x;let side=cfg.counts.y;if(c>=side*side){return;}
+  let count=atomicLoad(&cellCounts.values[c]);var available=count;
+  if(count>POOL){
+    available=0u;
+    for(var j=0u;j<POOL;j++){
+      let key=atomicLoad(&plans.values[c*POOL+j]);
+      if(key!=0xffffffffu || (j==127u && atomicLoad(&plans.values[planBase(c)+21u])>0u)){
+        cellIndices.values[c*POOL+available]=unhash(key)^(cfg.misc.x*2246822519u);available++;
+      }
     }
   }
-  for (var j=0u; j<bucketCount; j++) {
-    let stride = f32(sizes[j])/f32(max(1u, samples[j]));
-    plans.values[gid.x*9u+j] = vec4(buckets[j], sizes[j], samples[j], bitcast<u32>(stride));
+  atomicStore(&plans.values[planBase(c)+2u],available);
+  let buckets=select(9u,4u,side==2u);var total=0u;
+  let xy=vec2<i32>(i32(c%side),i32(c/side));
+  for(var j=0u;j<buckets;j++){
+    var other=j;
+    if(side!=2u){let v=(xy+vec2<i32>(i32(j%3u)-1,i32(j/3u)-1))&vec2<i32>(i32(side)-1);other=u32(v.x)+side*u32(v.y);}
+    total+=atomicLoad(&cellCounts.values[other]);
+    atomicStore(&plans.values[planBase(c)+3u+j],other);
+    atomicStore(&plans.values[planBase(c)+12u+j],total);
   }
+  atomicStore(&plans.values[planBase(c)],total);
 }
 @compute @workgroup_size(128) fn updateWind(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = gid.x;
-  if (id>=1024u) {
+  if (id>=windSide()*windSide()) {
     return;
   }
-  let position = vec2<f32>(f32(id%32u), f32(id/32u))*cfg.data.x/32.0;
+  let position = vec2<f32>(f32(id%windSide()), f32(id/windSide()))*cfg.data.x/f32(windSide());
   let time = f32(cfg.misc.x/4u)/15.0;
   var previous = wind.values[id].zw;
   if (cfg.misc.w==0u) {
@@ -299,17 +286,18 @@ fn permutation(input: u32, inverse: bool) -> u32 {
   }
   wind.values[id] = vec4(previous, fractal(position, time+1.0/15.0));
 }
-fn windNode(x: u32, y: u32) -> vec2<f32> {
-  let v = wind.values[(x&31u)+32u*(y&31u)];
-  return mix(v.xy, v.zw, f32(cfg.misc.x%4u)/4.0);
+fn windNode(x:i32,y:i32) -> vec2<f32> {
+  let side=i32(windSide());let v=wind.values[u32((x&(side-1))+side*(y&(side-1)))];
+  return mix(v.xy,v.zw,f32(cfg.misc.x%4u)/4.0);
 }
-fn windAt(position: vec2<f32>) -> vec2<f32> {
-  let xy = position/cfg.data.x*32.0;
-  let cell = vec2<u32>(floor(xy));
-  let f = fract(xy);
-  let a = mix(windNode(cell.x, cell.y), windNode(cell.x+1u, cell.y), f.x);
-  let b = mix(windNode(cell.x, cell.y+1u), windNode(cell.x+1u, cell.y+1u), f.x);
-  return mix(a, b, f.y)*vec2(p(P_WIND_X), p(P_WIND_Y))*p(P_WIND_WEIGHT);
+fn cubic(a:vec2<f32>,b:vec2<f32>,c:vec2<f32>,d:vec2<f32>,t:f32)->vec2<f32>{
+  return b+(c-a+(2.0*a-5.0*b+4.0*c-d+(3.0*(b-c)+d-a)*t)*t)*(t*.5);
+}
+fn windAt(position:vec2<f32>)->vec2<f32>{
+  let xy=position/cfg.data.x*f32(windSide());let c=vec2<i32>(floor(xy));let f=fract(xy);
+  var rows:array<vec2<f32>,4>;
+  for(var j=0;j<4;j++){let y=c.y+j-1;rows[j]=cubic(windNode(c.x-1,y),windNode(c.x,y),windNode(c.x+1,y),windNode(c.x+2,y),f.x);}
+  return cubic(rows[0],rows[1],rows[2],rows[3],f.y)*vec2(p(P_WIND_X),p(P_WIND_Y))*p(P_WIND_WEIGHT);
 }
 @compute @workgroup_size(128) fn advance(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = gid.x;
@@ -335,27 +323,26 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
   var velocity = vec2(0.0);
   var separation = vec2(0.0);
   if (maximum>0) {
-    let bucketCount = select(9u, 4u, cfg.counts.y==2u);
-    let plan = (cell(b.position)*9u+id%bucketCount)*9u;
-    let baseHash = hash(id^(cfg.misc.x*2246822519u));
-    let cohesion2 = p(P_COHESION_RADIUS)*p(P_COHESION_RADIUS);
-    let alignment2 = p(P_ALIGNMENT_RADIUS)*p(P_ALIGNMENT_RADIUS);
-    let repulsion2 = p(P_REPULSION_RADIUS)*p(P_REPULSION_RADIUS);
-    for (var j = 0u;j<bucketCount;j++) {
-      let bucket = plans.values[plan+j];
-      let take = bucket.z;
-      let available = bucket.y;
-      if (take==0u) {
-        continue;
-      }
-      let start = u32(random(baseHash^bucket.x)*f32(available));
-      let stride = bitcast<f32>(bucket.w);
-      for (var k = 0u;k<take;k++) {
-        var slot = start+u32(f32(k)*stride);
-        if (slot>=available) {
-          slot-=available;
+    let plan=planBase(cell(b.position));
+    // Rank the full population, not the capped representative pools.
+    let total=atomicLoad(&plans.values[plan]);let take=min(total,cfg.counts.z);
+    let baseHash=hash(id^(cfg.misc.x*2246822519u));
+    let jitter=random(baseHash);var j=0u;var previous=0u;
+    let cohesion2=p(P_COHESION_RADIUS)*p(P_COHESION_RADIUS);
+    let alignment2=p(P_ALIGNMENT_RADIUS)*p(P_ALIGNMENT_RADIUS);
+    let repulsion2=p(P_REPULSION_RADIUS)*p(P_REPULSION_RADIUS);
+    for(var k=0u;k<take;k++) {
+        let rank=min(total-1u,u32((f32(k)+jitter)*f32(total)/f32(take)));
+        loop {
+          let cumulative=atomicLoad(&plans.values[plan+12u+j]);
+          if(rank<cumulative){break;} previous=cumulative;j++;
         }
-        let otherId = cellIndices.values[bucket.x*POOL+slot];
+        let bucket=atomicLoad(&plans.values[plan+3u+j]);
+        let count=atomicLoad(&cellCounts.values[bucket]);
+        let available=atomicLoad(&plans.values[planBase(bucket)+2u]);
+        var slot=rank-previous;
+        if(count>POOL){slot=min(available-1u,u32(random(baseHash^(k*0x9e3779b9u))*f32(available)));}
+        let otherId=cellIndices.values[bucket*POOL+slot];
         if (otherId==id) {
           continue;
         }
@@ -380,7 +367,6 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
             separation-=d*mapScale/(q+.01*mapScale*mapScale);
           }
         }
-      }
     }
   }
   var desired = unit(offset/mapScale)*p(P_COHESION_WEIGHT)+unit(velocity/mapScale)*p(P_ALIGNMENT_WEIGHT)+unit(separation)*p(P_REPULSION_WEIGHT);

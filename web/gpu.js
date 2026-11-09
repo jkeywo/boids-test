@@ -141,7 +141,7 @@ export class GPUBoids {
     });
     this.wind = d.createBuffer({
       label: "GPU Perlin wind keyframes",
-      size: 1024 * 16,
+      size: 256 * 256 * 16,
       usage: GPUBufferUsage.STORAGE,
     });
     this.predatorCapacity = 32;
@@ -606,7 +606,7 @@ export class GPUBoids {
           encoder,
           "preparePlans",
           steps,
-          Math.ceil((config.side * config.side * 9) / 128),
+          Math.ceil((config.side * config.side) / 128),
         );
       if (
         settings["wind-enabled"] &&
@@ -615,7 +615,18 @@ export class GPUBoids {
           (settings["wind-time"] > 0 &&
             this.windFrame !== Math.floor(this.ticks / 4)))
       ) {
-        this.dispatch(encoder, "updateWind", steps, 8);
+        const windSide =
+          settings["wind-scale"] < 32
+            ? 256
+            : settings["wind-scale"] < 64
+              ? 128
+              : 64;
+        this.dispatch(
+          encoder,
+          "updateWind",
+          steps,
+          (windSide * windSide) / 128,
+        );
         this.windFrame = Math.floor(this.ticks / 4);
       }
       this.dispatch(

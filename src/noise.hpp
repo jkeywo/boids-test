@@ -43,21 +43,48 @@ struct Perlin3D {
       return -y - z;
     }
   }
-  static float sample(float x, float y, float z, uint32_t seed = 0x1234abcdu) {
+  static float sample(float x, float y, float z, uint32_t seed = 0x1234abcdu,
+                      int period = 0) {
     int ix = int(std::floor(x)), iy = int(std::floor(y)),
         iz = int(std::floor(z));
     float fx = x - ix, fy = y - iy, fz = z - iz;
+    if (period) {
+      ix %= period;
+      iy %= period;
+      if (ix < 0)
+        ix += period;
+      if (iy < 0)
+        iy += period;
+    }
     float sum = 0;
     const float u = fade(fx), v = fade(fy), w = fade(fz);
     for (int dz = 0; dz < 2; ++dz)
       for (int dy = 0; dy < 2; ++dy)
         for (int dx = 0; dx < 2; ++dx) {
           float weight = (dx ? u : 1 - u) * (dy ? v : 1 - v) * (dz ? w : 1 - w);
-          sum += gradient(hash(ix + dx, iy + dy, iz + dz, seed), fx - dx,
-                          fy - dy, fz - dz) *
+          sum += gradient(hash(period && ix + dx == period ? 0 : ix + dx,
+                               period && iy + dy == period ? 0 : iy + dy,
+                               iz + dz, seed),
+                          fx - dx, fy - dy, fz - dz) *
                  weight;
         }
     return sum;
+  }
+  // Blend adjacent integer lattice periods to retain a continuous scale
+  // control. Both fields are stationary and periodic; the normalization is
+  // spatially constant.
+  static float tiled(float x, float y, float z, float frequency,
+                     uint32_t seed) {
+    const int n = int(std::floor(frequency));
+    const float t = frequency - n;
+    auto at = [&](int period) {
+      return sample(x * period + .371f, y * period + .619f, z,
+                    seed ^ (uint32_t(period) * 0x9e3779b9u), period);
+    };
+    const float a = at(n);
+    if (t == 0)
+      return a;
+    return (a * (1 - t) + at(n + 1) * t) / std::sqrt((1 - t) * (1 - t) + t * t);
   }
 };
 } // namespace boids

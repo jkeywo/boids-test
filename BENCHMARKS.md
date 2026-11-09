@@ -1,3 +1,30 @@
+# Tiled wind and unbiased neighbour sampling
+
+Fixed both backends after reproducing grid dependence on the CPU with Wind disabled. The old CPU quota/remainder allocation was anchored to a fixed cell partition and reused its sampling phase for eight ticks. GPU quotas used capped representative counts instead of actual populations, while first-arrival pools could favour particular logical IDs. Wind wrapped its lookup table around non-periodic underlying noise, with bilinear derivative discontinuities and aliased high octaves.
+
+CPU sampling now uses a systematic sample of the full adjacent-cell population. GPU sampling weights uncapped populations and uses hash-stratified min-hash representatives independent of arrival order. Both translate the periodic sampling grid and refresh the sampling phase each tick. Sampling remains bounded (CPU adaptive 8–48 candidates; GPU 32, at most 128 representatives per cell), so individual trajectories retain sampling noise rather than exact all-pairs equivalence.
+
+Wind wraps the Perlin lattice in both spatial dimensions, blends neighbouring integer periods for arbitrary scales, filters octaves beyond cache resolution, and uses wrapped bicubic interpolation. The cache has 64 nodes per side by default, rising to 128/256 at finer spatial scales. Time remains the third noise dimension, with 15 Hz keyframe reuse. This removes spatial seam/derivative discontinuities without a per-boid noise evaluation.
+
+MSVC native and Node/WASM each pass **61,383 checks**. New tests compare dense frozen CPU sampling means against exhaustive sums at five translations, verify full-cell sampling-origin coverage, and check raw/cached wind seam values and derivatives. WebGPU passes **6,144 dense steering probes with zero errors**, an exact sparse all-pairs reference across both wrapping seams, and wind continuity/finite-state probes at three scales on all three maps. Existing population, presets, predators, rendering, browser and mobile-layout checks pass.
+
+Hardware: Intel Core Ultra 9 275HX, NVIDIA GeForce RTX 5090 Laptop GPU, Windows x64, Chrome 156 headless. Normal RAF, 920-square backing resolution, ten-second samples:
+
+| Scene | FPS | Simulation Hz | CPU tick ms | GPU compute ms/tick |
+| --- | ---: | ---: | ---: | ---: |
+| CPU 10,000 | 60.00 | 60.00 | 4.20 | — |
+| CPU 10,000, six-octave wind | 60.00 | 60.00 | 4.93 | — |
+| CPU 100,000 | 53.81 | 55.11 | 17.20 | — |
+| GPU 1,000,000 | 59.96 | 59.90 | — | 6.76 |
+| GPU 1,000,000, six-octave wind | 59.95 | 60.00 | — | 8.57 |
+| GPU 1,000,000, wind + 4 swarms + 10,000 boids/s swaps | 60.00 | 60.00 | — | 9.94 |
+
+CPU maximum uses eight candidates; the 10,000 scenes retain 48. Warm-up is three seconds except CPU maximum (20 seconds). Wind scale is 160. The CPU maximum remains below 60 FPS; no claim covers every parameter combination or mobile hardware.
+
+Fixed-budget processing probes (360 measured ticks after 120 warm-up) show the correctness cost: CPU baseline 3.57 → 4.91 ms/frame and heavy wind/predator scene 5.29 → 6.33 ms/frame; GPU compute baseline 0.151 → 0.566 ms/tick and heavy scene 0.169 → 0.603 ms/tick at 100,000 boids. Grid preparation itself becomes cheaper through shared cumulative distributions; corrected sampling and smoother wind cost more. The revised stochastic trajectories also change scene structure, so these are processing observations rather than identical-input microbenchmarks. Raw measurements and reproduction notes: [benchmarks/wrapping-fix.json](benchmarks/wrapping-fix.json).
+
+---
+
 # Live populations, mode-aware predator controls and swarm forests
 
 The Boids slider under Simulation mode uses `base * 10^(2t)` with t in [0,1], rounded to whole boids. CPU base is 1,000 and GPU base 10,000; midpoints are the existing 10,000/100,000 defaults, and endpoints reach 100,000 CPU / 1,000,000 GPU. The shared slider position is generic autosaved state, independent of flock slots. CPU Flecs entities grow/shrink live; GPU storage grows amortised, preserves both interpolation buffers and initialises only new tails. Resizing an inactive backend's map is applied before spawning additions. Active survivors and clocks continue without a restart.

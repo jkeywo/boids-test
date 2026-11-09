@@ -146,6 +146,16 @@ bool Simulation::setWorldSize(float wanted) {
   return true;
 }
 void Simulation::buildGrid() {
+  auto hash = [](uint32_t h) {
+    h ^= h >> 16;
+    h *= 0x7feb352du;
+    h ^= h >> 15;
+    h *= 0x846ca68bu;
+    return h ^ (h >> 16);
+  };
+  gridShift = {
+      float(hash(uint32_t(ticks) ^ 0x51ed270bu) >> 8) / 16777216.f * cellWidth,
+      float(hash(uint32_t(ticks) ^ 0x9e3779b9u) >> 8) / 16777216.f * cellWidth};
   counts.fill(0);
   query.each([&](Boid &b) {
     snapshot[b.index] = b;
@@ -163,37 +173,15 @@ void Simulation::buildGrid() {
   for (int c = 0; c < gridSide * gridSide; ++c) {
     if (!counts[c])
       continue;
-    int buckets[9], base[9], total = 0, assigned = 0;
+    int total = 0;
     for (int j = 0; j < bucketCount; ++j) {
-      buckets[j] =
+      const int other =
           gridSide == 2
               ? j
               : ((c % gridSide + j % 3 - 1) & (gridSide - 1)) +
                     gridSide * ((c / gridSide + j / 3 - 1) & (gridSide - 1));
-      total += counts[buckets[j]];
-    }
-    const float scale =
-        total > candidateLimit ? float(candidateLimit) / total : 1.f;
-    for (int j = 0; j < bucketCount; ++j) {
-      base[j] = total <= candidateLimit ? counts[buckets[j]]
-                                        : int(counts[buckets[j]] * scale);
-      assigned += base[j];
-    }
-    for (int first = 0; first < bucketCount; ++first) {
-      auto &plan = plans[c][first];
-      for (int j = 0; j < bucketCount; ++j)
-        plan[j] = {offsets[buckets[j]], counts[buckets[j]], base[j], 0};
-      int remaining = std::min(total, candidateLimit) - assigned;
-      for (int k = 0; k < bucketCount && remaining; ++k) {
-        int j = (k + first) % bucketCount;
-        if (plan[j].take < plan[j].count) {
-          ++plan[j].take;
-          --remaining;
-        }
-      }
-      for (int j = 0; j < bucketCount; ++j)
-        if (plan[j].take)
-          plan[j].stride = float(plan[j].count) / plan[j].take;
+      total += counts[other];
+      plans[c][j] = {offsets[other], counts[other], total};
     }
   }
 }
@@ -202,9 +190,17 @@ Neighbours Simulation::neighbours(const Boid &b) const {
   if (perceptionRadius <= 0)
     return n;
   const int bucketCount = gridSide == 2 ? 4 : 9;
-  const auto &plan = plans[cell(b.position)][b.index % bucketCount];
-  const uint32_t hash =
-      uint32_t(b.index) * 2654435761u + uint32_t(ticks / 8) * 2246822519u;
+  const auto &plan = plans[cell(b.position)];
+  uint32_t hash = uint32_t(b.index) ^ uint32_t(ticks) * 2246822519u;
+  hash ^= hash >> 16;
+  hash *= 0x7feb352du;
+  hash ^= hash >> 15;
+  hash *= 0x846ca68bu;
+  hash ^= hash >> 16;
+  const int total = plan[bucketCount - 1].cumulative;
+  const int take = std::min(total, candidateLimit);
+  const float stride = float(total) / std::max(1, take),
+              jitter = float(hash >> 8) / 16777216.f;
   const float mapScale = parameters.spatialScale,
               epsilonScale = mapScale * mapScale;
   const float cohesion2 =
@@ -253,18 +249,16 @@ Neighbours Simulation::neighbours(const Boid &b) const {
         add(sy, mask(rm, choose(tiny, mul(sign, splat(.5f)), mul(dy, factor))));
     used = 0;
   };
+  int k = 0;
   for (int j = 0; j < bucketCount; ++j) {
     const auto &bucket = plan[j];
-    if (!bucket.take)
-      continue;
-    const bool full = bucket.take == bucket.count;
-    const int start =
-        full ? 0 : int((uint64_t(hash) * uint32_t(bucket.count)) >> 32);
-    for (int k = 0; k < bucket.take; ++k) {
-      int at = full ? k : start + int(k * bucket.stride);
-      if (at >= bucket.count)
-        at -= bucket.count;
-      batch[used++] = &packed[bucket.offset + at];
+    const int first = bucket.cumulative - bucket.count;
+    while (k < take) {
+      const int rank = std::min(total - 1, int((k + jitter) * stride));
+      if (rank >= bucket.cumulative)
+        break;
+      batch[used++] = &packed[bucket.offset + rank - first];
+      ++k;
       if (used == 4)
         accumulate();
     }
@@ -279,58 +273,56 @@ Neighbours Simulation::neighbours(const Boid &b) const {
   n.separation = {sum(sx), sum(sy)};
   n.count = 1;
 #else
-  for (int j = 0; j < bucketCount; ++j) {
-    int count = plan[j].count, take = plan[j].take;
-    if (!take)
+  int bucketIndex = 0;
+  for (int k = 0; k < take; ++k) {
+    const int rank = std::min(total - 1, int((k + jitter) * stride));
+    while (rank >= plan[bucketIndex].cumulative)
+      ++bucketIndex;
+    const auto &bucket = plan[bucketIndex];
+    const auto &other =
+        packed[bucket.offset + rank - (bucket.cumulative - bucket.count)];
+    int id = int(other.index);
+    if (id == b.index)
       continue;
-    bool full = take == count;
-    int start = full ? 0 : int((uint64_t(hash) * uint32_t(count)) >> 32);
-    float stride = plan[j].stride;
-    for (int k = 0; k < take; ++k) {
-      int at = full ? k : start + int(k * stride);
-      if (at >= count)
-        at -= count;
-      const auto &other = packed[plan[j].offset + at];
-      int id = int(other.index);
-      if (id == b.index)
-        continue;
-      Vec d = delta(b.position, other.position, extent);
-      float q = length2(d);
-      if (q > perceptionRadius * perceptionRadius)
-        continue;
-      ++n.count;
-      if (parameters[CohesionEnabled] && q <= cohesion2)
-        n.offset += d;
-      if (parameters[AlignmentEnabled] && q <= alignment2)
-        n.velocity += other.velocity;
-      if (parameters[RepulsionEnabled] && q <= repulsion2) {
-        if (q < 1e-8f * epsilonScale) {
-          float sign = b.index < id ? 1.f : -1.f;
-          n.separation += Vec{sign, sign * .5f};
-        } else
-          n.separation += d * (-mapScale / (q + .01f * epsilonScale));
-      }
+    Vec d = delta(b.position, other.position, extent);
+    float q = length2(d);
+    if (q > perceptionRadius * perceptionRadius)
+      continue;
+    ++n.count;
+    if (parameters[CohesionEnabled] && q <= cohesion2)
+      n.offset += d;
+    if (parameters[AlignmentEnabled] && q <= alignment2)
+      n.velocity += other.velocity;
+    if (parameters[RepulsionEnabled] && q <= repulsion2) {
+      if (q < 1e-8f * epsilonScale) {
+        float sign = b.index < id ? 1.f : -1.f;
+        n.separation += Vec{sign, sign * .5f};
+      } else
+        n.separation += d * (-mapScale / (q + .01f * epsilonScale));
     }
   }
 #endif
-  n.offset = n.offset * (size / extent);
-  n.velocity = n.velocity * (size / extent);
+  n.separation = n.separation * stride;
+  n.offset = n.offset * (stride * size / extent);
+  n.velocity = n.velocity * (stride * size / extent);
   return n;
 }
-void Simulation::fillWind(std::array<Vec, cellCount> &field, float time) {
-  for (int y = 0; y < cells; ++y)
-    for (int x = 0; x < cells; ++x)
-      field[x + y * cells] =
-          Wind{}({x * extent / cells, y * extent / cells}, time, parameters);
+void Simulation::fillWind(std::vector<Vec> &field, float time) {
+  for (int y = 0; y < windSide; ++y)
+    for (int x = 0; x < windSide; ++x)
+      field[x + y * windSide] = Wind{}(
+          {x * extent / windSide, y * extent / windSide}, time, parameters);
 }
 void Simulation::updateWind() {
   if (!parameters[WindEnabled] || parameters[WindWeight] == 0)
     return;
+  const float frequency = extent / parameters[WindScale];
+  windSide = frequency > 32 ? 256 : frequency > 16 ? 128 : 64;
   double frame = parameters[WindTime] == 0 ? 0 : std::floor(elapsed * 15);
   float time = float(frame / 15);
   if (frame != windFrame) {
     if (windFrame >= 0 && frame == windFrame + 1)
-      windPrevious = windNext;
+      windPrevious.swap(windNext);
     else
       fillWind(windPrevious, time);
     fillWind(windNext, time + 1.f / 15);
@@ -339,24 +331,29 @@ void Simulation::updateWind() {
   windAlpha = parameters[WindTime] == 0
                   ? 0
                   : std::clamp(float(elapsed * 15 - frame), 0.f, 1.f);
-  for (int i = 0; i < cellCount; ++i)
+  for (int i = 0; i < windSide * windSide; ++i)
     windBlended[i] =
         windPrevious[i] * (1 - windAlpha) + windNext[i] * windAlpha;
 }
 Vec Simulation::windAt(Vec p) const {
-  float x = wrap(p.x, extent) / extent * cells,
-        y = wrap(p.y, extent) / extent * cells;
-  int ix = int(x), iy = int(y);
-  float fx = x - ix, fy = y - iy;
-  auto fieldSample = [&](const auto &field) {
-    auto at = [&](int dx, int dy) {
-      return field[((ix + dx) & (cells - 1)) +
-                   cells * ((iy + dy) & (cells - 1))];
-    };
-    return at(0, 0) * ((1 - fx) * (1 - fy)) + at(1, 0) * (fx * (1 - fy)) +
-           at(0, 1) * ((1 - fx) * fy) + at(1, 1) * (fx * fy);
+  const float x = wrap(p.x, extent) / extent * windSide,
+              y = wrap(p.y, extent) / extent * windSide;
+  const int ix = int(x), iy = int(y);
+  const float fx = x - ix, fy = y - iy;
+  auto cubic = [](Vec a, Vec b, Vec c, Vec d, float t) {
+    return b + (c - a +
+                (a * 2 - b * 5 + c * 4 - d + ((b - c) * 3 + d - a) * t) * t) *
+                   (t * .5f);
   };
-  return fieldSample(windBlended);
+  Vec rows[4];
+  for (int j = 0; j < 4; ++j) {
+    auto at = [&](int dx) {
+      return windBlended[((ix + dx) & (windSide - 1)) +
+                         windSide * ((iy + j - 1) & (windSide - 1))];
+    };
+    rows[j] = cubic(at(-1), at(0), at(1), at(2), fx);
+  }
+  return cubic(rows[0], rows[1], rows[2], rows[3], fy);
 }
 void Simulation::updateHuntDensity() {
   huntDensity.fill(0);

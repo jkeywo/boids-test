@@ -15,6 +15,89 @@ bool near(float a, float b, float epsilon = .01f) {
   return std::abs(a - b) < epsilon;
 }
 
+namespace boids {
+struct SamplingTestAccess {
+  static Neighbours sample(Simulation &s, uint64_t tick) {
+    s.ticks = tick;
+    s.buildGrid();
+    return s.neighbours(s.snapshot[0]);
+  }
+  static Vec shift(const Simulation &s) { return s.gridShift; }
+};
+} // namespace boids
+void periodicFieldAndSamplingTests() {
+  Parameters p;
+  for (float scale : {16.f, 31.f, 160.f, 512.f}) {
+    p.set(WindScale, scale);
+    p.set(WindOctaves, 6);
+    for (float time : {0.f, .7f, 4.f})
+      for (float y : {13.f, 128.f, 511.f, 997.f}) {
+        const Vec a = Wind{}({0, y}, time, p), b = Wind{}({1024, y}, time, p);
+        check(length2(a - b) < 1e-8f,
+              "raw wind tiles horizontally at every scale");
+        check(length2(Wind{}({y, 0}, time, p) - Wind{}({y, 1024}, time, p)) <
+                  1e-8f,
+              "raw wind tiles vertically at every scale");
+        const float h = .1f;
+        const Vec left = (a - Wind{}({1024 - h, y}, time, p)) * (1 / h),
+                  right = (Wind{}({h, y}, time, p) - a) * (1 / h);
+        check(length2(left - right) < .0002f,
+              "raw wind seam has matching derivatives");
+        check(std::isfinite(a.x + a.y), "band-limited extreme wind is finite");
+      }
+  }
+  Simulation wind(0);
+  wind.setParameter(WindEnabled, 1);
+  for (float scale : {16.f, 160.f}) {
+    wind.setParameter(WindScale, scale);
+    wind.tick(1.f / 60);
+    for (int axis = 0; axis < 2; ++axis)
+      for (float boundary : {0.f, 8.f, 16.f, 512.f, 1024.f}) {
+        auto at = [&](float x) {
+          return wind.windAt(axis ? Vec{73, x} : Vec{x, 73});
+        };
+        const float h = .05f;
+        const Vec a = at(boundary), left = (a - at(boundary - h)) * (1 / h),
+                  right = (at(boundary + h) - a) * (1 / h);
+        check(length2(left - right) < .0002f,
+              "cached cubic wind is smooth across nodes and seams");
+      }
+  }
+  // Freeze an asymmetric dense flock, then compare the actual bounded estimator
+  // against an independent exhaustive sum over many sampling epochs and phases.
+  Simulation sim(2000);
+  sim.setParameter(CohesionRadius, 64);
+  sim.setParameter(AlignmentEnabled, 0);
+  sim.setParameter(RepulsionEnabled, 0);
+  sim.setNeighbourBudget(8);
+  for (float shift : {0.f, 8.f, 17.f, 31.f, 505.f}) {
+    const Vec origin{wrap(512 + shift, 1024), 512};
+    sim.setBoid(0, origin, 0);
+    Vec truth;
+    for (int i = 1; i < 2000; ++i) {
+      const Vec position{wrap((i < 1800 ? 480.f : 544.f) + shift, 1024), 512};
+      sim.setBoid(i, position, 0);
+      truth += delta(origin, position, 1024);
+    }
+    Vec mean, minShift{64, 64}, maxShift;
+    for (int epoch = 0; epoch < 1024; ++epoch) {
+      mean += SamplingTestAccess::sample(sim, epoch).offset;
+      const Vec v = SamplingTestAccess::shift(sim);
+      minShift.x = std::min(minShift.x, v.x);
+      minShift.y = std::min(minShift.y, v.y);
+      maxShift.x = std::max(maxShift.x, v.x);
+      maxShift.y = std::max(maxShift.y, v.y);
+    }
+    mean = mean * (1.f / 1024);
+    check(std::abs(mean.x - truth.x) < std::abs(truth.x) * .03f,
+          "dense sampling mean matches actual population at every translation");
+    check(minShift.x < 4 && minShift.y < 4 && maxShift.x > 60 &&
+              maxShift.y > 60,
+          "sampling origin covers the whole cell instead of imprinting a fixed "
+          "grid");
+  }
+}
+
 // Independent all-pairs reference: small flocks fit the unchanged candidate
 // budget. Exercise SIMD tails, coincident positions, seams and disabled rules.
 void neighbourReferenceTests() {
@@ -805,6 +888,7 @@ int main() {
               boid.position.y >= 0 && boid.position.y < 256 &&
               std::isfinite(boid.position.y),
           "dense 256 cluster stable at maximum interaction radius");
+  periodicFieldAndSamplingTests();
   populationAndSwarmTests();
   mapScaleTests();
   predictedEllipseTests();
