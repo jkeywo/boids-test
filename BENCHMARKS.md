@@ -1,3 +1,17 @@
+# Swarm and six live settings slots
+
+Release [3c88e38](https://github.com/jkeywo/boids-test/commit/3c88e38) adds the Swarm functor and six coloured autosaving slots. Swarm follows the binary-tree parent `(index - 1) >> 1` for indices above zero, with wrapped displacement and a pre-tick snapshot. Boid 0 has no Swarm parent. All six slot buttons fill a fixed left-hand viewport-height column on desktop and mobile; slot switches apply settings to the current flock and preserve crossing flights. CPU/GPU selection is global. Reset changes only the active slot and preserves the other five and the running backend. Version 1 single-setting records migrate to slot 1 in the new six-slot version 2 record.
+
+Native MSVC and Node/WASM each pass **11,555 checks**, including parent mapping, root behavior, seam following, disabled-neighbour operation and snapshot ordering. Chrome CPU/GPU and Firefox CPU pass slot switching, pending-save capture, all-slot reload, per-slot reset, legacy migration and blocked-storage checks. GPU tests read all 100,000 records and verify that over 98% aim toward the correct parent with other rules disabled, with a separate check for even indices to catch the off-by-one formula. Tick counters and crossing trajectories continue across slot switches. The mobile rail and right settings panel both span the viewport; one-off layout checks cover page scrolling and 393x852, 393x650, 852x393 and 1600x900 viewports.
+
+[CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42603844812) pass. The same CPU/GPU movement, slot and Swarm suites pass on the published HTTPS site. Published WASM SHA-256 matches the locally tested build: `7798CAC5CABB441C2B9D2694711E1F0AF60EC534732E67032BF80C795B8CC03E`.
+
+A full 60-second hardware sample on the previously documented Windows/Chrome 156/RTX 5090 Laptop GPU setup sustained **60.00 FPS** with 100,000 boids on a 1024 map, Swarm enabled at weight 1, six-octave wind, shoal boosts and 16 orbiting predators. Simulation rate: 59.98 Hz; p95/p99 RAF intervals: 16.80/17.00 ms; mean sampled GPU compute: 0.286 ms/tick; CPU submission: 0.147 ms/frame. A crossing predator exits early in the sample. Raw local report: `artifacts/swarm-slots-gpu-60s.json`. Reproduce using `BROWSER_CHANNEL=chrome`, `BENCHMARK_SECONDS=60`, `BENCHMARK_SCENARIOS=gpu-swarm`, then `npm run test:gpu`.
+
+The software-adapter CI benchmark waits for an actual completed simulation tick if a one-second window contains none; fixed-duration hardware measurements are unchanged. Software validation is not a 60 FPS performance claim. Real mobile hardware remains unmeasured.
+
+---
+
 # Predator flights, Random and Hunt movement
 
 Release [03d4ced](https://github.com/jkeywo/boids-test/commit/03d4ced) sends each launched predator toward its own random point on the right edge. Resident predators support Orbit, independently seeded Perlin turn steering in (x, y, time), and bounded turning toward the highest-density nearby boid cell. The right-hand Predators panel exposes the movement selector plus roaming speed, turn-rate, noise spatial/time and hunt-radius sliders. Settings persist and reset normally; the UI now has 34 sliders, eight checkboxes and one parameter dropdown.
