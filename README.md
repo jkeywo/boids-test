@@ -39,6 +39,8 @@ npx playwright install chromium
 npm run test:browser
 ```
 
+For Firefox compatibility checks, install it with `npx playwright install firefox` and set `BROWSER_ENGINE=firefox` before running the same test.
+
 The browser test serves the site under `/boids-test/`, exercises controls and count limits, checks crossing-predator cleanup, verifies the side-by-side mobile layout, and saves screenshots and timing samples under `artifacts/`.
 
 For a 60-second sample per scenario in a browser, set `BENCHMARK_SECONDS=60` before running the browser test. `BROWSER_CHANNEL=chrome` selects an installed Google Chrome instead of the bundled Chromium. `TEST_URL` optionally targets the published site. It reports baseline, shoal, eight-predator and 16-predator scenarios, including crossing predators, with mean FPS and p50/p95/p99 frame intervals. Both the test and production use normal requestAnimationFrame scheduling.
@@ -55,4 +57,4 @@ The renderer interpolates wrapped positions between ticks, streams one instance 
 
 ## Deployment
 
-Pushes to `main` run native and WASM tests plus Chromium smoke tests, then publish `build/site` through GitHub Pages Actions. Pull requests run checks without deployment. Dependencies are pinned; Flecs source and its MIT licence are vendored. No backend is required.
+Pushes to `main` run native and WASM tests plus Chromium smoke tests, then publish `build/site` through GitHub Pages Actions. Pull requests run checks without deployment. Documentation-only pushes skip the workflow. Dependencies are pinned; Flecs source and its MIT licence are vendored. No backend is required.
