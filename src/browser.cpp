@@ -164,6 +164,9 @@ EMSCRIPTEN_KEEPALIVE void command(int action) {
   case 3:
     sim->removePredator();
     break;
+  case 5:
+    sim->predators.clear();
+    break;
   case 4:
     sim->setSmallMap(sim->worldSize() != 512);
     for (const auto &b : sim->state())

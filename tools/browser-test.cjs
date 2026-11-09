@@ -86,6 +86,177 @@ const server = http.createServer((req, res) => {
       timeout: 60000,
     });
     console.log("Simulation ready");
+    const storageKey = "boids-test.settings.v1";
+    const ready = () =>
+      page.waitForFunction(() => window.boidsTest?.ready, null, {
+        timeout: 60000,
+      });
+    const defaults = await page.evaluate(() => window.boidsTest.settings());
+    const assertDefaults = async () => {
+      const actual = await page.evaluate(() => window.boidsTest.settings());
+      assert.deepEqual(Object.keys(actual), Object.keys(defaults));
+      for (const [name, value] of Object.entries(defaults))
+        assert(
+          Math.abs(actual[name] - value) < 1e-5,
+          `Default mismatch: ${name}`,
+        );
+      assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 1024);
+      assert.equal(
+        await page.evaluate(() => window.boidsTest.predatorCount),
+        0,
+      );
+    };
+    await page.selectOption("#map-size", "256");
+    await page.locator("#param-wind-enabled").check();
+    await page.locator("#param-shoal-enabled").check();
+    await page.locator("#param-cohesion-enabled").uncheck();
+    await page.evaluate(() =>
+      window.boidsTest.setParameter("orbit-radius", 80),
+    );
+    await page.click("#add");
+    await page.click("#add");
+    await page.click("#send");
+    // Reload with an input save still pending: pagehide must flush it.
+    await page.evaluate(() => {
+      const input = document.querySelector("#param-speed");
+      input.value = "111";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.reload();
+    await ready();
+    const restored = await page.evaluate(() => ({
+      settings: window.boidsTest.settings(),
+      world: window.boidsTest.worldSize,
+      predators: window.boidsTest.predatorCount,
+      crossings: window.boidsTest.crossingCount,
+    }));
+    assert.equal(restored.world, 256);
+    assert.equal(restored.settings.speed, 111);
+    assert.equal(restored.settings["orbit-radius"], 80);
+    assert.equal(restored.settings["wind-enabled"], 1);
+    assert.equal(restored.settings["shoal-enabled"], 1);
+    assert.equal(restored.settings["cohesion-enabled"], 0);
+    assert.equal(restored.predators, 2);
+    assert.equal(restored.crossings, 0);
+    assert.equal(await page.locator("#map-size").inputValue(), "256");
+    assert.equal(await page.locator("#param-wind-enabled").isChecked(), true);
+    assert.equal(
+      Number(await page.locator("#param-orbit-radius").inputValue()),
+      80,
+    );
+    const saved = await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)),
+      storageKey,
+    );
+    assert.equal(saved.version, 1);
+    assert.equal(saved.worldSize, 256);
+    assert.equal(saved.orbitCount, 2);
+    assert.equal(saved.parameters.speed, 111);
+    assert.equal("crossings" in saved, false);
+    await page.evaluate(() =>
+      localStorage.setItem("other-app.settings", "leave-me-alone"),
+    );
+    await page.click("#send");
+    await page.click("#reset-defaults");
+    await assertDefaults();
+    assert.equal(
+      await page.evaluate((key) => localStorage.getItem(key), storageKey),
+      null,
+    );
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem("other-app.settings")),
+      "leave-me-alone",
+    );
+    await page.reload();
+    await ready();
+    await assertDefaults();
+    // Bad or unsupported data must not prevent the simulation from loading.
+    for (const value of [
+      "{broken",
+      JSON.stringify({
+        version: 99,
+        worldSize: 256,
+        parameters: { speed: 111 },
+      }),
+    ]) {
+      await page.evaluate(
+        ({ key, value }) => localStorage.setItem(key, value),
+        { key: storageKey, value },
+      );
+      await page.reload();
+      await ready();
+      await assertDefaults();
+    }
+    await page.evaluate(
+      (key) =>
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            version: 1,
+            worldSize: 300,
+            orbitCount: -100,
+            parameters: {
+              speed: "fast",
+              "cohesion-weight": -999,
+              "wind-octaves": 999,
+              "shoal-threshold": 10,
+              "shoal-rearm": 90,
+              "unknown-option": 123,
+            },
+          }),
+        ),
+      storageKey,
+    );
+    await page.reload();
+    await ready();
+    const clamped = await page.evaluate(() => window.boidsTest.settings());
+    assert.equal(clamped.speed, defaults.speed);
+    assert.equal(clamped["cohesion-weight"], 0);
+    assert.equal(clamped["wind-octaves"], 6);
+    assert.equal(clamped["shoal-rearm"], 9);
+    assert.equal(await page.evaluate(() => window.boidsTest.worldSize), 1024);
+    await page.click("#reset-defaults");
+    await assertDefaults();
+    // Storage can be disabled by the browser; controls and reset must still work.
+    const restricted = await browser.newPage();
+    const restrictedErrors = [];
+    restricted.on("pageerror", (error) => restrictedErrors.push(error.message));
+    await restricted.addInitScript(() =>
+      Object.defineProperty(window, "localStorage", {
+        get() {
+          throw new DOMException("Blocked for test", "SecurityError");
+        },
+      }),
+    );
+    await restricted.goto(url);
+    await restricted.waitForFunction(() => window.boidsTest?.ready, null, {
+      timeout: 60000,
+    });
+    await restricted.evaluate(() => window.boidsTest.setParameter("speed", 99));
+    await restricted.waitForTimeout(200);
+    assert.equal(
+      await restricted.evaluate(() => window.boidsTest.settings().speed),
+      99,
+    );
+    assert.match(
+      await restricted.locator("#settings-status").textContent(),
+      /unavailable/,
+    );
+    await restricted.click("#reset-defaults");
+    assert.equal(
+      await restricted.evaluate(() => window.boidsTest.settings().speed),
+      defaults.speed,
+    );
+    assert.equal(restrictedErrors.length, 0);
+    await restricted.close();
+    await page.screenshot({
+      path: path.join(artifact, "settings-reset.png"),
+      fullPage: true,
+    });
+    console.log(
+      "PASS: saved settings, pending-save reload, factory reset, unrelated storage, invalid data and blocked storage",
+    );
+
     await page.evaluate(() => {
       const canvas = document.querySelector("canvas");
       canvas.width = 1024;

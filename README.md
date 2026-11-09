@@ -63,11 +63,17 @@ Wind uses two independently seeded 3D gradient-noise channels for X and Y steeri
 
 For bounded cost with 10,000 boids, C++ samples a periodic 32 x 32 field at 15 Hz, interpolates between its time slices, then bilinearly samples that field for each boid at 60 Hz. Sampling wraps at the edges. Very fine octave detail is limited by this field resolution.
 
-Other panels expose individual steering radii/weights, shoal trigger/rearm angles, boost duration/cooldown, speed/turn multipliers, orbit radius/period and crossing-predator speed. Changes apply live. Orbit radius is clamped to fit the active map, and shoal rearm angle stays below its trigger angle. Settings reset on page reload.
+Other panels expose individual steering radii/weights, shoal trigger/rearm angles, boost duration/cooldown, speed/turn multipliers, orbit radius/period and crossing-predator speed. Changes apply live. Orbit radius is clamped to fit the active map, and shoal rearm angle stays below its trigger angle. Settings save automatically in this browser. Reloading starts a fresh flock with the saved sliders, functor toggles, map size and orbiting-predator count.
 
 `src/parameters.hpp` is the single parameter registry. It supplies names, groups, defaults, bounds and steps to both C++ validation and the automatically generated controls. A future functor can register its toggle/settings there and add its C++ contribution without hand-building another UI panel.
 
 WASM exports `parameter_schema()`, `get_parameter(id)`, `set_parameter(id, value)` and `parameter_max(id)`. Resolve IDs by the stable names in the JSON schema. `set_world_size(width)` accepts 256, 512 or 1024 and resets interpolation after resizing. The JS debug/interop API also offers `boidsTest.settings()`, `boidsTest.setParameter(name, value)`, `boidsTest.worldSize`, `boidsTest.crossingCount` and `boidsTest.predatorCount`. Slider inputs are bounded and quantized; nonfinite updates are rejected.
+
+## Saved settings
+
+Changes are saved in local storage under `boids-test.settings.v1`. Slider writes are debounced and flushed when leaving the page; map size and orbit-count changes save immediately. Values are restored through the C++ validation API, with map size applied before orbit radius. Unknown fields are ignored and missing fields keep their defaults.
+
+**Reset to defaults** restores every parameter, the 1024 x 1024 map and zero predators, and clears this app's saved preferences. The flock continues with the default configuration. Other applications' local-storage entries are preserved. The simulation remains usable when storage is blocked or saved data is invalid.
 
 ## Deployment
 

@@ -5,6 +5,11 @@ const buttons = Object.fromEntries(
   ["send", "add", "remove"].map((id) => [id, document.getElementById(id)]),
 );
 const mapSize = document.querySelector("#map-size");
+const resetButton = document.querySelector("#reset-defaults");
+const settingsStatus = document.querySelector("#settings-status");
+const SETTINGS_KEY = "boids-test.settings.v1";
+let factorySettings;
+let saveTimer = null;
 let moduleInstance;
 let parameterDefinitions = [];
 const parameterWidgets = new Map();
@@ -64,11 +69,115 @@ function buildParameterControls() {
         spec.toggle ? Number(input.checked) : Number(input.value),
       );
       refresh();
+      scheduleSettingsSave();
     });
+    if (!spec.toggle) input.addEventListener("change", saveSettings);
     parameterWidgets.set(spec.id, { input, spec });
   }
 }
 
+// Preferences use stable parameter names from the C++ registry.
+function parameterValues() {
+  return Object.fromEntries(
+    parameterDefinitions.map((spec) => [
+      spec.name,
+      moduleInstance._get_parameter(spec.id),
+    ]),
+  );
+}
+function currentPreferences() {
+  return {
+    version: 1,
+    worldSize: moduleInstance._statistic(7),
+    orbitCount: moduleInstance._statistic(0),
+    parameters: parameterValues(),
+  };
+}
+function storageUnavailable() {
+  settingsStatus.textContent =
+    "Browser storage is unavailable; changes apply for this visit.";
+}
+function cancelPendingSave() {
+  if (saveTimer !== null) clearTimeout(saveTimer);
+  saveTimer = null;
+}
+function saveSettings() {
+  cancelPendingSave();
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(currentPreferences()));
+    settingsStatus.textContent = "Changes save automatically in this browser.";
+  } catch {
+    storageUnavailable();
+  }
+}
+function scheduleSettingsSave() {
+  cancelPendingSave();
+  saveTimer = setTimeout(saveSettings, 150);
+}
+function setOrbitCount(value) {
+  const target = Math.max(0, Math.min(16, value));
+  while (moduleInstance._statistic(0) < target) moduleInstance._command(2);
+  while (moduleInstance._statistic(0) > target) moduleInstance._command(3);
+}
+function applyPreferences(saved) {
+  if ([256, 512, 1024].includes(saved.worldSize))
+    moduleInstance._set_world_size(saved.worldSize);
+  const values = saved.parameters;
+  if (values && typeof values === "object" && !Array.isArray(values)) {
+    // Apply in registry order: trigger before rearm, and map size before orbit radius.
+    for (const spec of parameterDefinitions) {
+      if (
+        Object.hasOwn(values, spec.name) &&
+        typeof values[spec.name] === "number" &&
+        Number.isFinite(values[spec.name])
+      )
+        moduleInstance._set_parameter(spec.id, values[spec.name]);
+    }
+  }
+  if (Number.isInteger(saved.orbitCount)) setOrbitCount(saved.orbitCount);
+}
+function restoreSettings() {
+  let raw;
+  try {
+    raw = localStorage.getItem(SETTINGS_KEY);
+  } catch {
+    storageUnavailable();
+    return;
+  }
+  if (raw === null) return;
+  try {
+    const saved = JSON.parse(raw);
+    if (
+      !saved ||
+      typeof saved !== "object" ||
+      Array.isArray(saved) ||
+      saved.version !== 1
+    )
+      return;
+    applyPreferences(saved);
+    settingsStatus.textContent = "Saved settings restored.";
+  } catch {
+    settingsStatus.textContent =
+      "Saved settings could not be read; using defaults.";
+  }
+}
+function resetDefaults() {
+  cancelPendingSave();
+  moduleInstance._command(5);
+  applyPreferences(factorySettings);
+  refresh();
+  resize();
+  try {
+    localStorage.removeItem(SETTINGS_KEY);
+    settingsStatus.textContent = "Default settings restored.";
+  } catch {
+    storageUnavailable();
+  }
+}
+resetButton.addEventListener("click", resetDefaults);
+window.addEventListener("pagehide", () => {
+  if (saveTimer !== null) saveSettings();
+});
 const frameTimes = [];
 const tickTimes = [];
 let measuring = false;
@@ -101,6 +210,7 @@ function refresh() {
   document.querySelector("#crossing-status").textContent =
     `Each click launches another predator. ${crossing} active.`;
   mapSize.disabled = false;
+  resetButton.disabled = false;
   mapSize.value = String(width);
   document.querySelector("#world-caption").textContent =
     `${width} x ${width} / TOROIDAL WORLD`;
@@ -126,12 +236,14 @@ Object.entries({ send: 1, add: 2, remove: 3 }).forEach(([id, action]) =>
   buttons[id].addEventListener("click", () => {
     moduleInstance._command(action);
     refresh();
+    if (action !== 1) saveSettings();
   }),
 );
 mapSize.addEventListener("change", () => {
   moduleInstance._set_world_size(Number(mapSize.value));
   refresh();
   resize();
+  saveSettings();
 });
 window.boidsTest = {
   ready: false,
@@ -145,18 +257,14 @@ window.boidsTest = {
     return moduleInstance._statistic(9);
   },
   settings() {
-    return Object.fromEntries(
-      parameterDefinitions.map((spec) => [
-        spec.name,
-        moduleInstance._get_parameter(spec.id),
-      ]),
-    );
+    return parameterValues();
   },
   setParameter(name, value) {
     const spec = parameterDefinitions.find((spec) => spec.name === name);
     if (!spec) throw new Error("Unknown parameter: " + name);
     const actual = moduleInstance._set_parameter(spec.id, value);
     refresh();
+    scheduleSettingsSave();
     return actual;
   },
   startBenchmark() {
@@ -206,6 +314,8 @@ window.boidsTest = {
         "WebGL 2 is required. Enable hardware acceleration or use a compatible browser.",
       );
     buildParameterControls();
+    factorySettings = currentPreferences();
+    restoreSettings();
     status.hidden = true;
     refresh();
     resize();
@@ -214,6 +324,7 @@ window.boidsTest = {
       elapsed = 0,
       frames = 0;
     document.addEventListener("visibilitychange", () => {
+      if (document.hidden && saveTimer !== null) saveSettings();
       previous = 0;
       moduleInstance._resume();
     });

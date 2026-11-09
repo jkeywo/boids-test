@@ -493,3 +493,13 @@ footer {
     font-size: 9px;
   }
 }
+#reset-defaults {
+  margin-top: 10px;
+  justify-content: center;
+  background: transparent;
+  font-size: 12px;
+  min-height: 40px;
+}
+#settings-status {
+  margin-bottom: 0;
+}
