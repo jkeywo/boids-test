@@ -1,0 +1,11 @@
+{
+  "name": "boids-test",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test:browser": "node tools/browser-test.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

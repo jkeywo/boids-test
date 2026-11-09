@@ -1,0 +1,307 @@
+:root {
+  color-scheme: dark;
+  font-family: "DM Sans", sans-serif;
+  background: #080e12;
+  color: #e2e9eb;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.app {
+  display: flex;
+  gap: 36px;
+  width: min(1400px, 100%);
+  padding: 38px;
+  align-items: stretch;
+}
+aside {
+  width: 226px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0 28px;
+}
+.eyebrow {
+  font-size: 9px;
+  letter-spacing: 1.6px;
+  color: #5c8c94;
+}
+h1 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 66px;
+  font-weight: 500;
+  letter-spacing: -5px;
+  margin: 16px 0 8px;
+}
+.dot {
+  color: #45d4db;
+}
+header p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #87969e;
+  margin: 0;
+}
+.controls {
+  margin-top: 48px;
+}
+button {
+  font: inherit;
+  color: #e2e9eb;
+  background: #101c23;
+  border: 1px solid #26353c;
+  border-radius: 8px;
+  cursor: pointer;
+  min-height: 48px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+button:hover:enabled {
+  background: #172b32;
+  border-color: #4c7b80;
+}
+button:focus-visible {
+  outline: 2px solid #45d4db;
+  outline-offset: 3px;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button[aria-pressed="true"] {
+  border-color: #45d4db;
+  background: #123237;
+}
+.tag {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #7a929b;
+}
+button[aria-pressed="true"] .tag {
+  color: #45d4db;
+}
+.hint {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #7c8e97;
+  margin: 10px 2px 25px;
+}
+.orbit-label {
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  color: #8fa2aa;
+  margin-bottom: 10px;
+}
+.stepper {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.stepper button {
+  width: 48px;
+  font-size: 24px;
+  justify-content: center;
+  padding: 5px;
+}
+.stepper output {
+  flex: 1;
+  text-align: center;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 24px;
+}
+footer {
+  margin-top: auto;
+  padding-top: 35px;
+}
+.metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.metric > span {
+  color: #70858e;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+.metric strong {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+}
+.metric small {
+  font-size: 10px;
+  color: #7c929c;
+}
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #8b9da5;
+  margin: 25px 0 19px;
+}
+.legend i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #3bd4db;
+}
+.legend i:not(:first-child) {
+  margin-left: 6px;
+}
+.legend .boost {
+  background: #ffe075;
+}
+.legend .predator {
+  background: #ff4552;
+}
+footer a {
+  font-size: 10px;
+  color: #607b86;
+  text-decoration: none;
+  display: flex;
+  justify-content: space-between;
+}
+.viewport {
+  min-width: 0;
+  flex: 1;
+  align-self: center;
+}
+.canvas-wrap {
+  position: relative;
+  border: 1px solid #26373e;
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 1;
+  background: #06101a;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+#status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #08121be8;
+  color: #9db6bc;
+  font-size: 14px;
+  padding: 25px;
+  text-align: center;
+}
+#status[hidden] {
+  display: none;
+}
+.caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 8px;
+  letter-spacing: 1.3px;
+  color: #617984;
+  padding: 15px 2px 0;
+}
+@media (min-width: 1000px) {
+  .viewport {
+    max-width: min(1024px, calc(100svh - 110px));
+  }
+}
+@media (max-width: 750px) {
+  .app {
+    padding: 18px 12px;
+    gap: 14px;
+  }
+  aside {
+    width: 130px;
+    padding: 0;
+  }
+  h1 {
+    font-size: 43px;
+    letter-spacing: -3px;
+    margin-top: 13px;
+  }
+  .eyebrow {
+    font-size: 7px;
+    letter-spacing: 0.8px;
+  }
+  header p {
+    font-size: 11px;
+  }
+  .controls {
+    margin-top: 25px;
+  }
+  button {
+    font-size: 11px;
+    padding: 10px 8px;
+  }
+  .hint {
+    font-size: 9px;
+    margin-bottom: 18px;
+  }
+  .orbit-label {
+    font-size: 8px;
+    letter-spacing: 0.5px;
+  }
+  .stepper {
+    gap: 3px;
+  }
+  .stepper button {
+    width: 38px;
+    min-height: 44px;
+  }
+  .stepper output {
+    font-size: 20px;
+  }
+  footer {
+    padding-top: 12px;
+  }
+  .metric > span {
+    font-size: 7px;
+    letter-spacing: 0;
+  }
+  .metric strong {
+    font-size: 13px;
+  }
+  .metric small {
+    font-size: 8px;
+  }
+  .legend {
+    flex-wrap: wrap;
+    font-size: 8px;
+    gap: 4px;
+    margin: 18px 0 12px;
+  }
+  footer a {
+    font-size: 8px;
+  }
+  .caption {
+    font-size: 7px;
+    letter-spacing: 0.5px;
+    flex-wrap: wrap;
+    line-height: 1.6;
+  }
+  .viewport {
+    align-self: flex-start;
+    margin-top: 3px;
+  }
+  .tag {
+    font-size: 8px;
+  }
+}

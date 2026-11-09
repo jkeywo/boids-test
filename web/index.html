@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#081016" />
+    <title>Boids / 10,000</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <aside>
+        <header>
+          <span class="eyebrow">COLLECTIVE MOTION / 01</span>
+          <h1>Boids<span class="dot">.</span></h1>
+          <p>Simple rules.<br />Emergent behaviour.</p>
+        </header>
+        <section class="controls" aria-label="Simulation controls">
+          <button id="shoal" aria-pressed="false" disabled>
+            <span>Shoal boost</span
+            ><span id="shoal-state" class="tag">OFF</span>
+          </button>
+          <p class="hint">
+            Sharp turns unlock a brief burst of speed and agility.
+          </p>
+          <button id="send" disabled>
+            <span>Send predator</span><span aria-hidden="true">↗</span>
+          </button>
+          <p class="hint">One pass through the flock.</p>
+          <div class="orbit-label">ORBITING PREDATORS</div>
+          <div class="stepper">
+            <button id="remove" aria-label="Remove orbiting predator" disabled>
+              −</button
+            ><output id="count" aria-label="Orbiting predator count">0</output
+            ><button id="add" aria-label="Add orbiting predator" disabled>
+              +
+            </button>
+          </div>
+          <p class="hint">Circling 400 units from the centre.</p>
+        </section>
+        <footer>
+          <div class="metric">
+            <span>POPULATION</span><strong>10,000</strong>
+          </div>
+          <div class="metric">
+            <span>FRAME RATE</span
+            ><strong><span id="fps">—</span><small> FPS</small></strong>
+          </div>
+          <div class="metric">
+            <span>SIMULATION</span
+            ><strong
+              ><span id="sim-ms">—</span><small> ms / tick</small></strong
+            >
+          </div>
+          <div class="legend">
+            <i></i>Boid <i class="boost"></i>Boost
+            <i class="predator"></i>Predator
+          </div>
+          <a href="https://github.com/jkeywo/boids-test"
+            >C++ · WASM · WebGL 2 <span>↗</span></a
+          >
+        </footer>
+      </aside>
+      <section class="viewport" aria-label="Boid simulation">
+        <div class="canvas-wrap">
+          <canvas
+            id="simulation"
+            width="1024"
+            height="1024"
+            aria-label="10,000 boids moving in a wrapping square world"
+          ></canvas>
+          <div id="status" role="status">
+            Loading the flock<span class="loading">…</span>
+          </div>
+        </div>
+        <div class="caption">
+          <span>1024 × 1024 / TOROIDAL WORLD</span
+          ><span>COHESION · ALIGNMENT · REPULSION</span>
+        </div>
+      </section>
+    </main>
+    <script src="boids.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
