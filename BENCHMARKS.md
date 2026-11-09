@@ -1,4 +1,12 @@
-# Controls, map sizes and concurrent predators
+# Saved settings and reset validation
+
+For [73358b0](https://github.com/jkeywo/boids-test/commit/73358b0), the save/reload/reset checks pass in Chromium and Firefox. They cover all settings, map size before orbit-radius restoration, saved orbit count, pending-save flush on reload, factory reset, preservation of unrelated storage, malformed/future-version data and blocked local storage. The deployed page passes the same checks.
+
+The existing 10,192 WebAssembly checks and native Linux CI checks remain green. [Release CI and deployment](https://github.com/jkeywo/boids-test/actions/runs/42571915362) pass. Published WASM SHA-256: `5950F851B2A04203F2F444E3A4F603EAC35A3D628A595BC50B2AAF90973D4265`, identical to the locally tested binary.
+
+The measurements below are from the earlier recorded revision; this settings update does not change simulation physics.
+
+## Earlier controls, map sizes and concurrent predator measurements
 
 Validation for [d968992](https://github.com/jkeywo/boids-test/commit/d968992), measured on 9 November 2026. Shoal now uses the same checkbox as the other five functors. The map selector offers 1024, 512 and 256 units. Each predator launch is independent of existing crossings; expired crossings leave individually.
 
@@ -6,7 +14,7 @@ Validation for [d968992](https://github.com/jkeywo/boids-test/commit/d968992), m
 
 - 10,192 checks pass in native MSVC C++ and Node-hosted WebAssembly. They cover all three map sizes, the dense 256 map at maximum interaction radius, 70 simultaneous launches, independent orbit/crossing lifecycles, and flee responses from predators beyond the old bitmask capacity.
 - Chromium and Firefox exercise all 27 sliders and six checkboxes, all three map sizes, and overlapping launches. A browser burst creates more than 40 crossings and verifies that the expanded instance buffer produces no WebGL error.
-- [CI build, browser checks and deployment](https://github.com/jkeywo/boids-test/actions/runs/42569998786) are green. The published WASM matches the locally tested binary byte for byte: SHA-256 `12467F6B087BC1F6EAD1CD018FD8EEBCF0BF08F15D91E1964A091B4D32603453`.
+- [CI build, browser checks and deployment](https://github.com/jkeywo/boids-test/actions/runs/42569998786) are green. For this recorded revision, the published WASM matched the locally tested binary byte for byte: SHA-256 `12467F6B087BC1F6EAD1CD018FD8EEBCF0BF08F15D91E1964A091B4D32603453`.
 
 ## 256-map performance
 
