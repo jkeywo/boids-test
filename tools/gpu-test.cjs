@@ -344,9 +344,9 @@ const server = http.createServer((req, res) => {
     }
     await page.setViewportSize({ width: 393, height: 852 });
     await settle();
-    const sidebar = await page.locator("aside").boundingBox(),
+    const sidebar = await page.locator(".functor-settings").boundingBox(),
       canvas = await page.locator("#gpu-simulation").boundingBox();
-    assert(sidebar.x + sidebar.width <= canvas.x);
+    assert(canvas.x + canvas.width <= sidebar.x);
     assert(Math.abs(canvas.width - canvas.height) < 1);
     await page.screenshot({
       path: path.join(artifacts, "gpu-mobile-layout.png"),

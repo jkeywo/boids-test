@@ -493,12 +493,12 @@ const server = http.createServer((req, res) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await page.waitForTimeout(500);
     const boxes = await Promise.all([
-      page.locator("aside").boundingBox(),
+      page.locator(".functor-settings").boundingBox(),
       page.locator("#simulation").boundingBox(),
     ]);
     assert(
-      boxes[0].x + boxes[0].width <= boxes[1].x,
-      "controls stay left on mobile",
+      boxes[1].x + boxes[1].width <= boxes[0].x,
+      "functor controls stay right of the simulation on mobile",
     );
     assert(
       Math.abs(boxes[1].width - boxes[1].height) < 1,

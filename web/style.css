@@ -525,3 +525,79 @@ canvas[hidden] {
 .legend .boost {
   background: var(--boost-colour, #ffe075);
 }
+
+/* Main actions | simulation | independently scrolling functor settings. */
+.app {
+  width: min(1680px, 100%);
+}
+.main-controls {
+  width: 226px;
+}
+.main-controls footer {
+  margin-top: auto;
+}
+.functor-settings {
+  width: 280px;
+}
+.functor-settings h2 {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: #8fa2aa;
+  margin: 0 0 12px;
+}
+.functor-settings .parameter-scroll {
+  margin-top: 0;
+  min-height: 0;
+}
+@media (min-width: 951px) and (max-width: 1200px) {
+  .app {
+    gap: 20px;
+    padding-inline: 24px;
+  }
+  .main-controls {
+    width: 180px;
+  }
+  .functor-settings {
+    width: 230px;
+  }
+}
+@media (max-width: 950px) {
+  .app {
+    display: grid;
+    grid-template-areas: "simulation settings" "actions settings";
+    grid-template-columns: minmax(0, 1fr) clamp(146px, 30vw, 240px);
+    height: auto;
+    min-height: 100svh;
+    max-height: none;
+    padding: 14px 12px;
+    gap: 20px 14px;
+    align-items: start;
+  }
+  .viewport {
+    grid-area: simulation;
+    width: 100%;
+    align-self: start;
+    margin-top: 0;
+  }
+  .main-controls {
+    grid-area: actions;
+    width: 100%;
+  }
+  .main-controls footer {
+    margin-top: 14px;
+  }
+  .functor-settings {
+    grid-area: settings;
+    width: 100%;
+    height: calc(100svh - 28px);
+    position: sticky;
+    top: 14px;
+    align-self: start;
+  }
+  .functor-settings h2 {
+    font-size: 9px;
+    letter-spacing: 0.8px;
+  }
+}
