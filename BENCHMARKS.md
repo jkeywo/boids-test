@@ -1,3 +1,13 @@
+# Appearance controls and hue wrapping
+
+Release [a904d08](https://github.com/jkeywo/boids-test/commit/a904d08) adds a base boid hue, a dark background in that hue, optional direction colouring and an optional signed hue offset during shoal boosts. All four controls persist in local storage and reset to their defaults. The UI now exposes 29 sliders and eight checkboxes. GPU configuration packing derives from the parameter registry instead of assuming a fixed array size.
+
+Rendered-pixel tests verify base hues, 360-degree wrapping, background colours, multiple direction hues, positive and negative shoal offsets, and disabling the offset in both WebGL and WebGPU. Chrome and Firefox CPU checks pass locally. Native/WASM checks pass (10,196 each). [CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42582799734) pass, including the software-GPU tests. Both CPU and GPU colour/control suites pass on the published HTTPS site. Published WASM SHA-256 matches the tested local build: `06B2DF1AE889CD9BF43349C1990AF1F236E4958134DA31CC6A3AD292DDEFBF42`.
+
+On the same Windows/Chrome 156/RTX 5090 Laptop GPU hardware documented below, the final GPU code sustained **60.00 FPS over 60 seconds** with 100,000 boids on the 256 map, direction colouring enabled, base hue 310 degrees, shoal offset +120 degrees, six-octave wind, shoal boosts and 16 orbiting predators. Simulation rate: 59.99 Hz; p95/p99 RAF interval: 17.00/17.00 ms; mean sampled GPU compute: 0.468 ms/tick. A crossing predator exits early in the sample. Raw local report: `artifacts/hue-direction-gpu-60s-guard.json`. This release also matches the CPU boundary guard when GPU wrapping rounds a tiny negative coordinate up to exactly the map extent.
+
+---
+
 # 100,000-boid GPU mode
 
 Measured on 9 November 2026 for [ebb8e87](https://github.com/jkeywo/boids-test/commit/ebb8e87). Windows x64, Intel Core Ultra 9 275HX, NVIDIA GeForce RTX 5090 Laptop GPU, installed Chrome 156 in headless mode. WebGPU reports a non-fallback NVIDIA Blackwell adapter. Normal requestAnimationFrame scheduling; no experimental WebGPU or software-rendering flags in these hardware runs. Each scenario runs for a full 60 seconds after warm-up, with all 100,000 boids active and a 32-candidate budget.
