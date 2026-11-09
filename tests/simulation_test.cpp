@@ -57,7 +57,13 @@ int main() {
   pair.setBoid(0, {1, 512}, pi);
   pair.setBoid(1, {1023, 512}, 0);
   pair.tick(1.f / 60);
-  check(pair.state()[0].velocity.y != 0, "seam neighbour contributes steering");
+  check(std::abs(pair.state()[0].velocity.y) > 1,
+        "seam neighbour contributes steering");
+  pair.setBoid(0, {512, 1}, -pi / 2);
+  pair.setBoid(1, {512, 1023}, pi / 2);
+  pair.tick(1.f / 60);
+  check(std::abs(pair.state()[0].velocity.x) > 1,
+        "vertical seam neighbour contributes steering");
   pair.setBoid(0, {512, 512}, 0);
   pair.setBoid(1, {512, 512}, 0);
   for (int i = 0; i < 120; ++i)

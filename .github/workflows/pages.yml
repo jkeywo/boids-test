@@ -1,7 +1,8 @@
-name: Build, test and deploy
+name: Build and deploy
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md"]
   pull_request:
   workflow_dispatch:
 permissions:

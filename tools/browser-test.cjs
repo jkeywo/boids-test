@@ -1,4 +1,4 @@
-const { chromium } = require("@playwright/test");
+const { chromium, firefox } = require("@playwright/test");
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -47,16 +47,25 @@ const server = http.createServer((req, res) => {
     const url =
       process.env.TEST_URL ||
       `http://127.0.0.1:${server.address().port}/boids-test/`;
-    browser = await chromium.launch({
-      headless: true,
-      channel: process.env.BROWSER_CHANNEL || "chromium",
-      args: [
-        "--enable-webgl",
-        "--ignore-gpu-blocklist",
+    const engineName = process.env.BROWSER_ENGINE || "chromium";
+    const browserType = engineName === "firefox" ? firefox : chromium;
+    const launchOptions =
+      engineName === "firefox"
+        ? {
+            headless: true,
+            firefoxUserPrefs: { "webgl.force-enabled": true },
+          }
+        : {
+            headless: true,
+            channel: process.env.BROWSER_CHANNEL || "chromium",
+            args: [
+              "--enable-webgl",
+              "--ignore-gpu-blocklist",
 
-        "--disable-background-timer-throttling",
-      ],
-    });
+              "--disable-background-timer-throttling",
+            ],
+          };
+    browser = await browserType.launch(launchOptions);
     const page = await browser.newPage({
       viewport: { width: 1600, height: 1200 },
     });
@@ -181,7 +190,11 @@ const server = http.createServer((req, res) => {
       url,
       gpu,
       headless: true,
-      channel: process.env.BROWSER_CHANNEL || "chromium",
+      browserEngine: engineName,
+      channel:
+        engineName === "firefox"
+          ? "firefox"
+          : process.env.BROWSER_CHANNEL || "chromium",
       mobileHardwareTested: false,
       results,
     };
