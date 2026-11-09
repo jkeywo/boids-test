@@ -18,6 +18,8 @@ Hardware observations (normal RAF, 920-square backing resolution, Chrome 156 hea
 
 Samples are 10 seconds, after 20 seconds CPU / 3 seconds GPU warm-up. CPU max-count work uses its minimum eight-neighbour budget. Under overload, the CPU browser loop limits catch-up to one fixed tick per display frame; this improved max-count display responsiveness from approximately 10 to 37 FPS in the local observation while retaining the requested population. The initial CPU neighbour budget also adapts immediately to population size. These are device-specific measurements: **the CPU maximum does not reach 60 FPS on this machine**. Raw measurements: [benchmarks/population-limits.json](benchmarks/population-limits.json). Defaults remain at their previous counts and around 60 FPS.
 
+Chrome CPU/GPU and Firefox CPU suites pass. [CI and Pages deployment](https://github.com/jkeywo/boids-test/actions/runs/42649073461) pass for [f004671](https://github.com/jkeywo/boids-test/commit/f004671), including software-GPU million-boid resizing, storage-word swap validation and one/four-root forest tests. Live Pages checks confirm all six CPU/GPU anchor counts, defaults of one swarm/zero swaps, active CPU and GPU swapping, finite wrapped GPU records and mode-dependent predator rows, with no browser/GPU errors. Published WASM SHA-256 matches the tested build: `24B9B9A6E563FEC4EFD8890B7E11B5F83EB23E2C5B664A4DF50D36175BFA7618`; HTML, CSS, loader, app, GPU host and both shaders match as well (text line endings normalised).
+
 ---
 
 # Uniform map scaling
