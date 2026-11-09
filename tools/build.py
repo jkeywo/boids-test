@@ -29,14 +29,17 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', action='store_true')
+    parser.add_argument('--profile', action='store_true', help='stage timings and fixed CPU neighbour budget for benchmarks')
     args = parser.parse_args()
     out = ROOT / 'build'
     out.mkdir(exist_ok=True)
     run([compiler('emcc'), '-O3', '-DNDEBUG', *FLECS_FLAGS,
          '-c', 'vendor/flecs.c', '-o', out / 'flecs.o'])
-    common = [compiler('em++'), '-std=c++20', '-O3', '-flto', '-DNDEBUG',
+    common = [compiler('em++'), '-std=c++20', '-O3', '-flto', '-msimd128', '-DNDEBUG',
               '-sSTACK_SIZE=1048576', *FLECS_FLAGS, '-Ivendor', '-Isrc',
               'src/simulation.cpp', out / 'flecs.o']
+    if args.profile:
+        common += ['-DBOIDS_PROFILE']
     if args.test:
         run(common + ['tests/simulation_test.cpp', '-sENVIRONMENT=node',
                       '-sEXIT_RUNTIME=1', '-sALLOW_MEMORY_GROWTH=1',

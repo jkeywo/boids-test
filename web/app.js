@@ -507,6 +507,43 @@ window.boidsTest = {
   get cpuTicks() {
     return moduleInstance._statistic(6);
   },
+  async profileRun(frames = 360) {
+    if (activeMode === "cpu") {
+      if (!moduleInstance._profile_reset)
+        throw new Error("Build with --profile first");
+      for (let i = 0; i < 120; i++) moduleInstance._frame(1 / 60);
+      moduleInstance._profile_reset();
+      const begin = performance.now();
+      for (let i = 0; i < frames; i++) moduleInstance._frame(1 / 60);
+      return {
+        wallMs: (performance.now() - begin) / frames,
+        stages: Array.from({ length: 7 }, (_, i) =>
+          moduleInstance._profile_statistic(i),
+        ),
+        budget: moduleInstance._statistic(5),
+      };
+    }
+    const g = gpuEngine;
+    if (!g.timers) throw new Error("GPU timestamp queries are unavailable");
+    g.profileEveryFrame = true;
+    const step = async () => {
+      g.frame(1 / 60);
+      await g.device.queue.onSubmittedWorkDone();
+      while (g.mapping || g.mappingDensity)
+        await new Promise((r) => setTimeout(r, 0));
+    };
+    for (let i = 0; i < 120; i++) await step();
+    g.profileCompute = g.profileRender = g.profileSamples = g.profileSteps = 0;
+    const begin = performance.now();
+    for (let i = 0; i < frames; i++) await step();
+    return {
+      wallMs: (performance.now() - begin) / frames,
+      computeMs: g.profileCompute / g.profileSteps,
+      renderMs: g.profileRender / g.profileSamples,
+      samples: g.profileSamples,
+      adapter: g.adapter,
+    };
+  },
   gpuStats() {
     return gpuEngine?.stats() || null;
   },

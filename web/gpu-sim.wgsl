@@ -1,13 +1,13 @@
 // PARAMETER_CONSTANTS
 struct Config {
   data: vec4<f32>,
-  // extent, dt, time, interpolation alpha
+  // extent, dt, boosted turn sine, interpolation alpha
   counts: vec4<u32>,
   // population, grid side, candidate budget, predators
   misc: vec4<u32>,
-  // tick, insertion rotation, reserved, reserved
+  // tick, insertion rotation, hunt-density enabled, wind keyframe reuse
   scale: vec4<f32>,
-  // map-rescale ratio
+  // map-rescale ratio, base turn cosine/sine, boosted turn cosine
   params: array<vec4<f32>, PARAMETER_VECTORS>,
 }
 struct Boid {
@@ -38,6 +38,8 @@ struct Vectors {
 @group(0) @binding(5) var<storage, read_write> wind: Vectors;
 @group(0) @binding(6) var<storage, read> predators: Vectors;
 @group(0) @binding(7) var<storage, read_write> huntDensity: Counts;
+struct Plans { values: array<vec4<u32>> }
+@group(0) @binding(8) var<storage, read_write> plans: Plans;
 const PI: f32 = 3.14159265359;
 // Each cell keeps a rotating bounded pool; every boid is still integrated.
 const POOL: u32 = 128u;
@@ -157,13 +159,26 @@ fn fractal(position: vec2<f32>, time: f32) -> vec2<f32> {
   }
   return result/total;
 }
+// The spare word caches display colour once per tick, shared by all vertices.
+fn boidColour(velocity: vec2<f32>, boost: f32) -> u32 {
+  var hue = p(P_BOID_HUE);
+  if (p(P_DIRECTION_HUE)>0.0) {
+    hue += atan2(velocity.y, velocity.x)*57.2957795131;
+  }
+  if (boost>0.0 && p(P_SHOAL_HUE_ENABLED)>0.0) {
+    hue += p(P_SHOAL_HUE_OFFSET);
+  }
+  let h = fract(hue/360.0);
+  let rgb = clamp(abs(fract(vec3(h)+vec3(0.0, 2.0/3.0, 1.0/3.0))*6.0-3.0)-1.0, vec3(0.0), vec3(1.0));
+  return pack4x8unorm(vec4(0.86*mix(vec3(1.0), rgb, vec3(0.73)), 1.0));
+}
 @compute @workgroup_size(128) fn initialize(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = gid.x;
   if (id>=cfg.counts.x) {
     return;
   }
   let angle = random(id*3u+3u)*2.0*PI;
-  stateOut.values[id] = Boid(vec2(random(id*3u+1u), random(id*3u+2u))*cfg.data.x, vec2(cos(angle), sin(angle))*p(P_SPEED), 0, 0, 1u, 0u);
+  stateOut.values[id] = Boid(vec2(random(id*3u+1u), random(id*3u+2u))*cfg.data.x, vec2(cos(angle), sin(angle))*p(P_SPEED), 0, 0, 1u, boidColour(vec2(cos(angle),sin(angle)),0));
 }
 @compute @workgroup_size(128) fn rescale(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = gid.x;
@@ -199,6 +214,55 @@ fn fractal(position: vec2<f32>, time: f32) -> vec2<f32> {
     cellIndices.values[c*POOL+slot] = id;
   }
 }
+// Allocation depends only on the cell and the rotated remainder offset, not
+// on the boid. Keep identical candidate quotas while sharing this work.
+@compute @workgroup_size(128) fn preparePlans(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let side = cfg.counts.y;
+  let bucketCount = select(9u, 4u, side==2u);
+  let c = gid.x/9u;
+  let first = gid.x%9u;
+  if (c>=side*side || first>=bucketCount) {
+    return;
+  }
+  if (atomicLoad(&cellCounts.values[c])==0u) {
+    return;
+  }
+  let xy = vec2<i32>(i32(c%side), i32(c/side));
+  var buckets: array<u32, 9>;
+  var sizes: array<u32, 9>;
+  var samples: array<u32, 9>;
+  var total = 0u;
+  for (var j=0u; j<bucketCount; j++) {
+    var other = j;
+    if (side!=2u) {
+      let v = (xy+vec2<i32>(i32(j%3u)-1, i32(j/3u)-1))&vec2<i32>(i32(side)-1);
+      other = u32(v.x)+side*u32(v.y);
+    }
+    buckets[j] = other;
+    sizes[j] = min(atomicLoad(&cellCounts.values[other]), POOL);
+    total += sizes[j];
+  }
+  let budget = min(total, cfg.counts.z);
+  let ratio = f32(budget)/f32(max(total, 1u));
+  var assigned = 0u;
+  for (var j=0u; j<bucketCount; j++) {
+    samples[j] = min(sizes[j], u32(f32(sizes[j])*ratio));
+    assigned += samples[j];
+  }
+  var remaining = budget-assigned;
+  for (var k=0u; k<bucketCount && remaining>0u; k++) {
+    var j = k+first;
+    if (j>=bucketCount) { j-=bucketCount; }
+    if (samples[j]<sizes[j]) {
+      samples[j]++;
+      remaining--;
+    }
+  }
+  for (var j=0u; j<bucketCount; j++) {
+    let stride = f32(sizes[j])/f32(max(1u, samples[j]));
+    plans.values[gid.x*9u+j] = vec4(buckets[j], sizes[j], samples[j], bitcast<u32>(stride));
+  }
+}
 @compute @workgroup_size(128) fn updateWind(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = gid.x;
   if (id>=1024u) {
@@ -206,7 +270,11 @@ fn fractal(position: vec2<f32>, time: f32) -> vec2<f32> {
   }
   let position = vec2<f32>(f32(id%32u), f32(id/32u))*cfg.data.x/32.0;
   let time = f32(cfg.misc.x/4u)/15.0;
-  wind.values[id] = vec4(fractal(position, time), fractal(position, time+1.0/15.0));
+  var previous = wind.values[id].zw;
+  if (cfg.misc.w==0u) {
+    previous = fractal(position, time);
+  }
+  wind.values[id] = vec4(previous, fractal(position, time+1.0/15.0));
 }
 fn windNode(x: u32, y: u32) -> vec2<f32> {
   let v = wind.values[(x&31u)+32u*(y&31u)];
@@ -243,61 +311,27 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
   var velocity = vec2(0.0);
   var separation = vec2(0.0);
   if (maximum>0) {
-    var buckets: array<u32, 9>;
-    var sizes: array<u32, 9>;
-    var samples: array<u32, 9>;
-    let side = cfg.counts.y;
-    let xy = vec2<i32>(b.position/cfg.data.x*f32(side));
-    let bucketCount = select(9u, 4u, side==2u);
-    var total = 0u;
-    for (var j = 0u;j<bucketCount;j++) {
-      var c = j;
-      if (side!=2u) {
-        let v = (xy+vec2<i32>(i32(j%3u)-1, i32(j/3u)-1))&vec2<i32>(i32(side)-1);
-        c = u32(v.x)+side*u32(v.y);
-      }
-      buckets[j] = c;
-      sizes[j] = min(atomicLoad(&cellCounts.values[c]), POOL);
-      total+=sizes[j];
-    }
-    // Divide the per-boid candidate budget across nonempty neighbouring cells.
-    var assigned = 0u;
-    let budget = min(total, cfg.counts.z);
-    let ratio = f32(budget)/f32(max(total, 1u));
-    for (var j = 0u;j<bucketCount;j++) {
-      samples[j] = min(sizes[j], u32(f32(sizes[j])*ratio));
-      assigned+=samples[j];
-    }
-    var remaining = budget-assigned;
-    let first = id%bucketCount;
-    for (var k = 0u;k<bucketCount&&remaining>0u;k++) {
-      var j = k+first;
-      if (j>=bucketCount) {
-        j-=bucketCount;
-      }
-      if (samples[j]<sizes[j]) {
-        samples[j]++;
-        remaining--;
-      }
-    }
+    let bucketCount = select(9u, 4u, cfg.counts.y==2u);
+    let plan = (cell(b.position)*9u+id%bucketCount)*9u;
     let baseHash = hash(id^(cfg.misc.x*2246822519u));
     let cohesion2 = p(P_COHESION_RADIUS)*p(P_COHESION_RADIUS);
     let alignment2 = p(P_ALIGNMENT_RADIUS)*p(P_ALIGNMENT_RADIUS);
     let repulsion2 = p(P_REPULSION_RADIUS)*p(P_REPULSION_RADIUS);
     for (var j = 0u;j<bucketCount;j++) {
-      let take = samples[j];
-      let available = sizes[j];
+      let bucket = plans.values[plan+j];
+      let take = bucket.z;
+      let available = bucket.y;
       if (take==0u) {
         continue;
       }
-      let start = u32(random(baseHash^buckets[j])*f32(available));
-      let stride = f32(available)/f32(take);
+      let start = u32(random(baseHash^bucket.x)*f32(available));
+      let stride = bitcast<f32>(bucket.w);
       for (var k = 0u;k<take;k++) {
         var slot = start+u32(f32(k)*stride);
         if (slot>=available) {
           slot-=available;
         }
-        let otherId = cellIndices.values[buckets[j]*POOL+slot];
+        let otherId = cellIndices.values[bucket.x*POOL+slot];
         if (otherId==id) {
           continue;
         }
@@ -341,7 +375,7 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
         if (q<1e-8) {
           d = vec2(-predator.w, predator.z);
         }
-        desired+=unit(d)*(1.0-sqrt(q)/radius)*p(P_FLEE_WEIGHT);
+        desired+=d*select(inverseSqrt(max(q,1e-8))-1.0/radius,1.0,q<1e-8)*p(P_FLEE_WEIGHT);
       }
     }
   }
@@ -351,14 +385,10 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
   if (dot(desired, desired)<1e-10) {
     desired = unit(b.velocity);
   }
-  var heading = atan2(b.velocity.y, b.velocity.x);
-  var error = atan2(desired.y, desired.x)-heading;
-  if (error>PI) {
-    error-=2.0*PI;
-  }
-  if (error< -PI) {
-    error+=2.0*PI;
-  }
+  let old = unit(b.velocity);
+  let desiredDirection = unit(desired);
+  let cosine = clamp(dot(old, desiredDirection), -1.0, 1.0);
+  // Shoal angle parameters are packed as cosines by writeConfig.
   if (p(P_SHOAL_ENABLED)==0.0) {
     b.boost = 0;
     b.cooldown = 0;
@@ -367,19 +397,26 @@ fn windAt(position: vec2<f32>) -> vec2<f32> {
   else {
     b.boost = max(0.0, min(b.boost, p(P_SHOAL_DURATION))-cfg.data.y);
     b.cooldown = max(0.0, b.cooldown-cfg.data.y);
-    if (abs(error)<=p(P_SHOAL_REARM)*PI/180.0&&b.cooldown==0.0) {
+    if (cosine>=p(P_SHOAL_REARM)&&b.cooldown==0.0) {
       b.armed = 1u;
     }
-    if (b.armed==1u&&b.cooldown==0.0&&abs(error)>p(P_SHOAL_THRESHOLD)*PI/180.0) {
+    if (b.armed==1u&&b.cooldown==0.0&&cosine<p(P_SHOAL_THRESHOLD)) {
       b.boost = p(P_SHOAL_DURATION);
       b.cooldown = p(P_SHOAL_DURATION)+p(P_SHOAL_COOLDOWN);
       b.armed = 0u;
     }
   }
-  let turn = p(P_TURN_RATE)*PI/180.0*select(1.0, p(P_SHOAL_TURN), b.boost>0.0)*cfg.data.y;
-  heading+=clamp(error, -turn, turn);
+  let turnCos = select(cfg.scale.y, cfg.scale.w, b.boost>0.0);
+  let turnSin = select(cfg.scale.z, cfg.data.z, b.boost>0.0);
+  var direction = desiredDirection;
+  if (cosine<turnCos) {
+    let sign = select(-1.0, 1.0, old.x*desiredDirection.y-old.y*desiredDirection.x>=0.0);
+    let sn = turnSin*sign;
+    direction = vec2(old.x*turnCos-old.y*sn, old.x*sn+old.y*turnCos);
+  }
   let speed = p(P_SPEED)*select(1.0, p(P_SHOAL_SPEED), b.boost>0.0);
-  b.velocity = vec2(cos(heading), sin(heading))*speed;
+  b.velocity = direction*speed;
+  b.padding = boidColour(b.velocity, b.boost);
   b.position = wrap(b.position+b.velocity*cfg.data.y);
   stateOut.values[id] = b;
 }

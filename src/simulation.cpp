@@ -1,4 +1,13 @@
 #include "simulation.hpp"
+#include "simd.hpp"
+#ifdef BOIDS_PROFILE
+#include <chrono>
+static double profileNow() {
+  return std::chrono::duration<double, std::milli>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+#endif
 namespace boids {
 float Simulation::random() {
   randomState ^= randomState << 13;
@@ -17,7 +26,8 @@ void Simulation::assignPredatorIdentity(Predator &p) {
   p.speedMultiplier = .8f + .4f * float(h >> 8) / 16777216.f;
 }
 Simulation::Simulation(int count)
-    : query(world.query<Boid>()), snapshot(count), packed(count) {
+    : query(world.query<Boid>()), snapshot(count), packed(count),
+      plans(cellCount), previousPositions(count) {
   predators.reserve(32);
   for (auto &cell : predatorCells)
     cell.reserve(16);
@@ -32,6 +42,7 @@ Simulation::Simulation(int count)
          true,
          i});
   }
+  resetInterpolation();
   configureGrid();
 }
 void Simulation::configureGrid() {
@@ -109,63 +120,141 @@ void Simulation::buildGrid() {
     cursor[c] = offsets[c];
   }
   for (auto &b : snapshot)
-    packed[cursor[cell(b.position)]++] = b.index;
+    packed[cursor[cell(b.position)]++] = {b.position, b.velocity,
+                                          float(b.index)};
+  const int bucketCount = gridSide == 2 ? 4 : 9;
+  for (int c = 0; c < gridSide * gridSide; ++c) {
+    if (!counts[c])
+      continue;
+    int buckets[9], base[9], total = 0, assigned = 0;
+    for (int j = 0; j < bucketCount; ++j) {
+      buckets[j] =
+          gridSide == 2
+              ? j
+              : ((c % gridSide + j % 3 - 1) & (gridSide - 1)) +
+                    gridSide * ((c / gridSide + j / 3 - 1) & (gridSide - 1));
+      total += counts[buckets[j]];
+    }
+    const float scale =
+        total > candidateLimit ? float(candidateLimit) / total : 1.f;
+    for (int j = 0; j < bucketCount; ++j) {
+      base[j] = total <= candidateLimit ? counts[buckets[j]]
+                                        : int(counts[buckets[j]] * scale);
+      assigned += base[j];
+    }
+    for (int first = 0; first < bucketCount; ++first) {
+      auto &plan = plans[c][first];
+      for (int j = 0; j < bucketCount; ++j)
+        plan[j] = {offsets[buckets[j]], counts[buckets[j]], base[j], 0};
+      int remaining = std::min(total, candidateLimit) - assigned;
+      for (int k = 0; k < bucketCount && remaining; ++k) {
+        int j = (k + first) % bucketCount;
+        if (plan[j].take < plan[j].count) {
+          ++plan[j].take;
+          --remaining;
+        }
+      }
+      for (int j = 0; j < bucketCount; ++j)
+        if (plan[j].take)
+          plan[j].stride = float(plan[j].count) / plan[j].take;
+    }
+  }
 }
 Neighbours Simulation::neighbours(const Boid &b) const {
   Neighbours n;
   if (perceptionRadius <= 0)
     return n;
-  int buckets[9], samples[9];
-  const int cx = int(b.position.x / cellWidth),
-            cy = int(b.position.y / cellWidth);
-  // A 2x2 grid has only four unique cells, not nine wrapped neighbours.
   const int bucketCount = gridSide == 2 ? 4 : 9;
-  int total = 0;
-  for (int j = 0; j < bucketCount; ++j) {
-    buckets[j] = gridSide == 2
-                     ? j
-                     : ((cx + j % 3 - 1) & (gridSide - 1)) +
-                           gridSide * ((cy + j / 3 - 1) & (gridSide - 1));
-    total += counts[buckets[j]];
-  }
-  float scale = total > candidateLimit ? float(candidateLimit) / total : 1.f;
-  uint32_t hash =
+  const auto &plan = plans[cell(b.position)][b.index % bucketCount];
+  const uint32_t hash =
       uint32_t(b.index) * 2654435761u + uint32_t(ticks / 8) * 2246822519u;
-  int assigned = 0;
-  for (int j = 0; j < bucketCount; ++j) {
-    int count = counts[buckets[j]];
-    samples[j] = total <= candidateLimit ? count : int(count * scale);
-    assigned += samples[j];
-  }
-  int remaining = std::min(total, candidateLimit) - assigned;
-  for (int k = 0; k < bucketCount && remaining; ++k) {
-    int j = (k + b.index % bucketCount) % bucketCount;
-    if (samples[j] < counts[buckets[j]]) {
-      ++samples[j];
-      --remaining;
-    }
-  }
   const float cohesion2 =
                   parameters[CohesionRadius] * parameters[CohesionRadius],
               alignment2 =
                   parameters[AlignmentRadius] * parameters[AlignmentRadius],
               repulsion2 =
                   parameters[RepulsionRadius] * parameters[RepulsionRadius];
+#ifdef BOIDS_SIMD
+  using namespace simd;
+  const F zero = splat(0), half = splat(extent * .5f),
+          minusHalf = splat(-extent * .5f), width = splat(extent);
+  const F bx = splat(b.position.x), by = splat(b.position.y);
+  const F cr = splat(parameters[CohesionEnabled] ? cohesion2 : -1),
+          ar = splat(parameters[AlignmentEnabled] ? alignment2 : -1),
+          rr = splat(parameters[RepulsionEnabled] ? repulsion2 : -1);
+  F ox = zero, oy = zero, vx = zero, vy = zero, sx = zero, sy = zero;
+  const NeighbourRecord *batch[4];
+  int used = 0;
+  const NeighbourRecord dummy{b.position, {}, float(b.index)};
+  auto accumulate = [&]() {
+    F x = load(&batch[0]->position.x), y = load(&batch[1]->position.x),
+      velx = load(&batch[2]->position.x), vely = load(&batch[3]->position.x);
+    transpose(x, y, velx, vely);
+    F dx = sub(x, bx), dy = sub(y, by);
+    dx = choose(le(half, dx), sub(dx, width), dx);
+    dx = choose(lt(dx, minusHalf), add(dx, width), dx);
+    dy = choose(le(half, dy), sub(dy, width), dy);
+    dy = choose(lt(dy, minusHalf), add(dy, width), dy);
+    const F q = add(mul(dx, dx), mul(dy, dy));
+    const F ids = set(batch[0]->index, batch[1]->index, batch[2]->index,
+                      batch[3]->index),
+            self = splat(float(b.index));
+    const F valid = ne(ids, self);
+    const F cm = mask(valid, le(q, cr)), am = mask(valid, le(q, ar)),
+            rm = mask(valid, le(q, rr));
+    ox = add(ox, mask(cm, dx));
+    oy = add(oy, mask(cm, dy));
+    vx = add(vx, mask(am, velx));
+    vy = add(vy, mask(am, vely));
+    const F factor = div(splat(-1), add(q, splat(.01f))),
+            tiny = lt(q, splat(1e-8f));
+    const F sign = choose(lt(self, ids), splat(1), splat(-1));
+    sx = add(sx, mask(rm, choose(tiny, sign, mul(dx, factor))));
+    sy =
+        add(sy, mask(rm, choose(tiny, mul(sign, splat(.5f)), mul(dy, factor))));
+    used = 0;
+  };
   for (int j = 0; j < bucketCount; ++j) {
-    int count = counts[buckets[j]], take = samples[j];
+    const auto &bucket = plan[j];
+    if (!bucket.take)
+      continue;
+    const bool full = bucket.take == bucket.count;
+    const int start =
+        full ? 0 : int((uint64_t(hash) * uint32_t(bucket.count)) >> 32);
+    for (int k = 0; k < bucket.take; ++k) {
+      int at = full ? k : start + int(k * bucket.stride);
+      if (at >= bucket.count)
+        at -= bucket.count;
+      batch[used++] = &packed[bucket.offset + at];
+      if (used == 4)
+        accumulate();
+    }
+  }
+  if (used) {
+    while (used < 4)
+      batch[used++] = &dummy;
+    accumulate();
+  }
+  n.offset = {sum(ox), sum(oy)};
+  n.velocity = {sum(vx), sum(vy)};
+  n.separation = {sum(sx), sum(sy)};
+  n.count = 1;
+#else
+  for (int j = 0; j < bucketCount; ++j) {
+    int count = plan[j].count, take = plan[j].take;
     if (!take)
       continue;
     bool full = take == count;
     int start = full ? 0 : int((uint64_t(hash) * uint32_t(count)) >> 32);
-    float stride = float(count) / take;
+    float stride = plan[j].stride;
     for (int k = 0; k < take; ++k) {
       int at = full ? k : start + int(k * stride);
       if (at >= count)
         at -= count;
-      int id = packed[offsets[buckets[j]] + at];
+      const auto &other = packed[plan[j].offset + at];
+      int id = int(other.index);
       if (id == b.index)
         continue;
-      const auto &other = snapshot[id];
       Vec d = delta(b.position, other.position, extent);
       float q = length2(d);
       if (q > perceptionRadius * perceptionRadius)
@@ -184,6 +273,7 @@ Neighbours Simulation::neighbours(const Boid &b) const {
       }
     }
   }
+#endif
   return n;
 }
 void Simulation::fillWind(std::array<Vec, cellCount> &field, float time) {
@@ -195,7 +285,7 @@ void Simulation::fillWind(std::array<Vec, cellCount> &field, float time) {
 void Simulation::updateWind() {
   if (!parameters[WindEnabled] || parameters[WindWeight] == 0)
     return;
-  double frame = std::floor(elapsed * 15);
+  double frame = parameters[WindTime] == 0 ? 0 : std::floor(elapsed * 15);
   float time = float(frame / 15);
   if (frame != windFrame) {
     if (windFrame >= 0 && frame == windFrame + 1)
@@ -205,7 +295,12 @@ void Simulation::updateWind() {
     fillWind(windNext, time + 1.f / 15);
     windFrame = frame;
   }
-  windAlpha = std::clamp(float(elapsed * 15 - frame), 0.f, 1.f);
+  windAlpha = parameters[WindTime] == 0
+                  ? 0
+                  : std::clamp(float(elapsed * 15 - frame), 0.f, 1.f);
+  for (int i = 0; i < cellCount; ++i)
+    windBlended[i] =
+        windPrevious[i] * (1 - windAlpha) + windNext[i] * windAlpha;
 }
 Vec Simulation::windAt(Vec p) const {
   float x = wrap(p.x, extent) / extent * cells,
@@ -220,8 +315,7 @@ Vec Simulation::windAt(Vec p) const {
     return at(0, 0) * ((1 - fx) * (1 - fy)) + at(1, 0) * (fx * (1 - fy)) +
            at(0, 1) * ((1 - fx) * fy) + at(1, 1) * (fx * fy);
   };
-  return fieldSample(windPrevious) * (1 - windAlpha) +
-         fieldSample(windNext) * windAlpha;
+  return fieldSample(windBlended);
 }
 void Simulation::updateHuntDensity() {
   huntDensity.fill(0);
@@ -306,32 +400,51 @@ void Simulation::advanceEnvironment(float dt, bool includeWind,
                   predators.end());
 }
 void Simulation::tick(float dt) {
+#ifdef BOIDS_PROFILE
+  double stamp = profileNow();
+#endif
   advanceEnvironment(dt);
+#ifdef BOIDS_PROFILE
+  profileMs[0] += profileNow() - stamp;
+  stamp = profileNow();
+#endif
   // Cell lists retain all active predators, including launches beyond 32.
   for (auto &cell : predatorCells)
     cell.clear();
-  if (parameters[FleeEnabled] && parameters[FleeWeight] > 0) {
+  const bool allPredators =
+      std::ceil(parameters[FleeRadius] / (extent / 8)) >= 4;
+  if (parameters[FleeEnabled] && parameters[FleeWeight] > 0 && !allPredators) {
     int ring = int(std::ceil(parameters[FleeRadius] / (extent / 8)));
     for (const auto &predator : predators) {
-      if (ring >= 4) {
-        for (auto &cell : predatorCells)
-          cell.push_back(predator);
-      } else {
-        int cx = int(wrap(predator.position.x, extent) / (extent / 8));
-        int cy = int(wrap(predator.position.y, extent) / (extent / 8));
-        for (int dy = -ring; dy <= ring; ++dy)
-          for (int dx = -ring; dx <= ring; ++dx)
-            predatorCells[((cx + dx + 8) & 7) + 8 * ((cy + dy + 8) & 7)]
-                .push_back(predator);
-      }
+      int cx = int(wrap(predator.position.x, extent) / (extent / 8));
+      int cy = int(wrap(predator.position.y, extent) / (extent / 8));
+      for (int dy = -ring; dy <= ring; ++dy)
+        for (int dx = -ring; dx <= ring; ++dx)
+          predatorCells[((cx + dx + 8) & 7) + 8 * ((cy + dy + 8) & 7)]
+              .push_back(&predator);
     }
   }
+#ifdef BOIDS_PROFILE
+  profileMs[1] += profileNow() - stamp;
+  stamp = profileNow();
+#endif
   const bool swarm = parameters[SwarmEnabled] && parameters[SwarmWeight] > 0;
   if (perceptionRadius > 0)
     buildGrid();
   else if (swarm)
     query.each([&](const Boid &b) { snapshot[b.index] = b; });
+#ifdef BOIDS_PROFILE
+  profileMs[2] += profileNow() - stamp;
+  stamp = profileNow();
+#endif
+  const float baseTurn = parameters[TurnRate] * pi / 180 * dt,
+              boostTurn = baseTurn * parameters[ShoalTurn];
+  const float baseCos = std::cos(baseTurn), baseSin = std::sin(baseTurn),
+              boostCos = std::cos(boostTurn), boostSin = std::sin(boostTurn);
+  const float rearmCos = std::cos(parameters[ShoalRearm] * pi / 180),
+              thresholdCos = std::cos(parameters[ShoalThreshold] * pi / 180);
   query.each([&](Boid &b) {
+    previousPositions[b.index] = b.position;
     Neighbours n = neighbours(perceptionRadius > 0 ? snapshot[b.index] : b);
     Vec desired = Cohesion{}(n)*parameters[CohesionWeight] +
                   Alignment{}(n)*parameters[AlignmentWeight] +
@@ -340,28 +453,88 @@ void Simulation::tick(float dt) {
       desired += Swarm{}(snapshot[b.index], snapshot, extent) *
                  parameters[SwarmWeight];
     if (parameters[FleeEnabled] && parameters[FleeWeight] > 0)
-      desired += Flee{}(b.position,
+      desired +=
+          (allPredators
+               ? Flee{}(b.position, predators, parameters[FleeRadius], extent)
+               : Flee{}(b.position,
                         predatorCells[int(b.position.x / (extent / 8)) +
                                       8 * int(b.position.y / (extent / 8))],
-                        parameters[FleeRadius], extent) *
-                 parameters[FleeWeight];
+                        parameters[FleeRadius], extent)) *
+          parameters[FleeWeight];
     if (parameters[WindEnabled] && parameters[WindWeight] > 0)
       desired += windAt(b.position);
     if (length2(desired) < 1e-10f)
       desired = unit(b.velocity);
-    float error = angleDifference(b.heading, std::atan2(desired.y, desired.x));
-    Shoal{}(b, error, dt, parameters[ShoalEnabled] > 0, parameters);
-    float turn = parameters[TurnRate] * pi / 180 *
-                 (b.boost > 0 ? parameters[ShoalTurn] : 1) * dt;
-    b.heading =
-        std::remainder(b.heading + std::clamp(error, -turn, turn), 2 * pi);
-    float speed =
-        parameters[Speed] * (b.boost > 0 ? parameters[ShoalSpeed] : 1);
-    b.velocity = {std::cos(b.heading) * speed, std::sin(b.heading) * speed};
+    const Vec old = unit(b.velocity), target = unit(desired);
+    const float cosine =
+        std::clamp(old.x * target.x + old.y * target.y, -1.f, 1.f);
+    // Compare cosines instead of evaluating two angles for every boid.
+    if (!parameters[ShoalEnabled]) {
+      b.boost = b.cooldown = 0;
+      b.armed = true;
+    } else {
+      b.boost =
+          std::max(0.f, std::min(b.boost, parameters[ShoalDuration]) - dt);
+      b.cooldown = std::max(0.f, b.cooldown - dt);
+      if (cosine >= rearmCos && b.cooldown == 0)
+        b.armed = true;
+      if (b.armed && b.cooldown == 0 && cosine < thresholdCos) {
+        b.boost = parameters[ShoalDuration];
+        b.cooldown = parameters[ShoalDuration] + parameters[ShoalCooldown];
+        b.armed = false;
+      }
+    }
+    const bool boosted = b.boost > 0;
+    const float turn = boosted ? boostTurn : baseTurn,
+                c = boosted ? boostCos : baseCos,
+                sine = boosted ? boostSin : baseSin;
+    Vec direction;
+    if (turn >= pi || cosine >= c) {
+      direction = target;
+    } else {
+      const float sign = old.x * target.y - old.y * target.x >= 0 ? 1.f : -1.f;
+      const float sn = sine * sign;
+      direction = {old.x * c - old.y * sn, old.x * sn + old.y * c};
+    }
+    const float speed =
+        parameters[Speed] * (boosted ? parameters[ShoalSpeed] : 1);
+    b.velocity = direction * speed;
     b.position += b.velocity * dt;
     b.position = {wrap(b.position.x, extent), wrap(b.position.y, extent)};
   });
   ++ticks;
+#ifdef BOIDS_PROFILE
+  profileMs[3] += profileNow() - stamp;
+  ++profileTicks;
+#endif
+}
+void Simulation::resetInterpolation() {
+  query.each([&](const Boid &b) { previousPositions[b.index] = b.position; });
+}
+void Simulation::writeRenderInstances(std::vector<float> &output, float alpha) {
+  output.resize((snapshot.size() + predators.size()) * 6);
+  query.each([&](const Boid &b) {
+    const Vec old = previousPositions[b.index];
+    const Vec p = old + delta(old, b.position, extent) * alpha,
+              direction = unit(b.velocity);
+    float *v = output.data() + b.index * 6;
+    v[0] = wrap(p.x, extent);
+    v[1] = wrap(p.y, extent);
+    v[2] = direction.x;
+    v[3] = direction.y;
+    v[4] = 0;
+    v[5] = b.boost > 0 ? 1.f : 0.f;
+  });
+  for (size_t i = 0; i < predators.size(); ++i) {
+    const auto &p = predators[i];
+    float *v = output.data() + (snapshot.size() + i) * 6;
+    v[0] = p.position.x;
+    v[1] = p.position.y;
+    v[2] = std::cos(p.heading);
+    v[3] = std::sin(p.heading);
+    v[4] = 1;
+    v[5] = 0;
+  }
 }
 void Simulation::setShoal(bool enabled) {
   setParameter(ShoalEnabled, enabled ? 1 : 0);
@@ -429,7 +602,11 @@ void Simulation::removePredator() {
   }
 }
 const std::vector<Boid> &Simulation::state() {
-  query.each([&](Boid &b) { snapshot[b.index] = b; });
+  query.each([&](const Boid &b) {
+    snapshot[b.index] = b;
+    // Heading is a diagnostic view of velocity, materialised only on demand.
+    snapshot[b.index].heading = std::atan2(b.velocity.y, b.velocity.x);
+  });
   return snapshot;
 }
 void Simulation::setBoid(int i, Vec p, float heading) {

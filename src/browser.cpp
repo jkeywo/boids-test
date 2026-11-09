@@ -7,7 +7,6 @@
 using namespace boids;
 static std::unique_ptr<Simulation> sim;
 static std::vector<float> instances;
-static std::vector<Vec> previous;
 static GLuint program, vao, vbo;
 static GLint worldSizeUniform, colourUniform;
 static size_t instanceCapacity = (population + 32) * 6;
@@ -15,6 +14,10 @@ static double accumulator = 0;
 static float simulationMs = 0;
 static NeighbourBudgetController quality;
 static uint64_t totalTicks = 0;
+#ifdef BOIDS_PROFILE
+static double profileFrameMs = 0, profileRenderMs = 0;
+static uint64_t profileFrames = 0;
+#endif
 static std::array<uint32_t, cellCount> incomingHuntDensity;
 static GLuint shader(GLenum type, const char *source) {
   GLuint s = glCreateShader(type);
@@ -103,23 +106,20 @@ void main(){outColor=vec4(color,1.);})";
   glEnableVertexAttribArray(2);
   glVertexAttribDivisor(2, 1);
   sim = std::make_unique<Simulation>();
-  previous.resize(population);
-  auto &initial = sim->state();
-  for (auto &b : initial)
-    previous[b.index] = b.position;
+  sim->resetInterpolation();
   instances.reserve(instanceCapacity);
   return 1;
 }
 EMSCRIPTEN_KEEPALIVE void frame(double dt) {
   if (!sim)
     return;
+#ifdef BOIDS_PROFILE
+  const double profileBegin = emscripten_get_now();
+#endif
   accumulator += std::clamp(dt, 0., .1);
   int steps = 0;
   double begin = emscripten_get_now();
   while (accumulator >= 1. / 60 && steps < 4) {
-    auto &before = sim->state();
-    for (auto &b : before)
-      previous[b.index] = b.position;
     sim->tick(1.f / 60);
     accumulator -= 1. / 60;
     ++steps;
@@ -130,23 +130,17 @@ EMSCRIPTEN_KEEPALIVE void frame(double dt) {
   if (steps) {
     const float elapsedMs = float(emscripten_get_now() - begin);
     simulationMs = elapsedMs / steps;
+#ifdef BOIDS_PROFILE
+    sim->setNeighbourBudget(
+        candidateBudget); // fixed work for fair benchmark comparisons
+#else
     sim->setNeighbourBudget(quality.observe(elapsedMs, steps));
+#endif
   }
-  auto &state = sim->state();
-  float alpha = float(accumulator * 60);
-  instances.clear();
-  for (auto &b : state) {
-    Vec p = previous[b.index] +
-            delta(previous[b.index], b.position, sim->worldSize()) * alpha;
-    const Vec direction = unit(b.velocity);
-    instances.insert(instances.end(),
-                     {wrap(p.x, sim->worldSize()), wrap(p.y, sim->worldSize()),
-                      direction.x, direction.y, 0, b.boost > 0 ? 1.f : 0.f});
-  }
-  for (auto &p : sim->predators)
-    instances.insert(instances.end(),
-                     {p.position.x, p.position.y, std::cos(p.heading),
-                      std::sin(p.heading), 1, 0});
+#ifdef BOIDS_PROFILE
+  const double profileRenderBegin = emscripten_get_now();
+#endif
+  sim->writeRenderInstances(instances, float(accumulator * 60));
   int w, h;
   emscripten_get_canvas_element_size("#simulation", &w, &h);
   glViewport(0, 0, w, h);
@@ -175,6 +169,11 @@ EMSCRIPTEN_KEEPALIVE void frame(double dt) {
   glBufferSubData(GL_ARRAY_BUFFER, 0, instances.size() * sizeof(float),
                   instances.data());
   glDrawArraysInstanced(GL_TRIANGLES, 0, 3, GLsizei(instances.size() / 6));
+#ifdef BOIDS_PROFILE
+  profileFrameMs += emscripten_get_now() - profileBegin;
+  profileRenderMs += emscripten_get_now() - profileRenderBegin;
+  ++profileFrames;
+#endif
 }
 EMSCRIPTEN_KEEPALIVE void command(int action) {
   if (!sim)
@@ -197,8 +196,7 @@ EMSCRIPTEN_KEEPALIVE void command(int action) {
     break;
   case 4:
     sim->setSmallMap(sim->worldSize() != 512);
-    for (const auto &b : sim->state())
-      previous[b.index] = b.position;
+    sim->resetInterpolation();
     accumulator = 0;
     break;
   }
@@ -234,8 +232,7 @@ EMSCRIPTEN_KEEPALIVE double statistic(int id) {
 EMSCRIPTEN_KEEPALIVE int set_world_size(int width) {
   if (!sim || !sim->setWorldSize(float(width)))
     return 0;
-  for (const auto &b : sim->state())
-    previous[b.index] = b.position;
+  sim->resetInterpolation();
   accumulator = 0;
   return int(sim->worldSize());
 }
@@ -300,5 +297,26 @@ EMSCRIPTEN_KEEPALIVE void clear_hunt_density() {
   if (sim)
     sim->clearHuntDensity();
 }
+#ifdef BOIDS_PROFILE
+EMSCRIPTEN_KEEPALIVE void profile_reset() {
+  sim->profileMs.fill(0);
+  sim->profileTicks = 0;
+  profileFrameMs = profileRenderMs = 0;
+  profileFrames = 0;
+}
+EMSCRIPTEN_KEEPALIVE double profile_statistic(int id) {
+  if (id >= 0 && id < 4)
+    return sim->profileMs[id] / std::max(uint64_t(1), sim->profileTicks);
+  if (id == 4) {
+    double total = 0;
+    for (double v : sim->profileMs)
+      total += v;
+    return total / std::max(uint64_t(1), sim->profileTicks);
+  }
+  if (id == 5)
+    return profileRenderMs / std::max(uint64_t(1), profileFrames);
+  return profileFrameMs / std::max(uint64_t(1), profileFrames);
+}
+#endif
 EMSCRIPTEN_KEEPALIVE void resume() { accumulator = 0; }
 }

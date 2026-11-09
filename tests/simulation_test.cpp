@@ -15,6 +15,76 @@ bool near(float a, float b, float epsilon = .01f) {
   return std::abs(a - b) < epsilon;
 }
 
+// Independent all-pairs reference: small flocks fit the unchanged candidate
+// budget. Exercise SIMD tails, coincident positions, seams and disabled rules.
+void neighbourReferenceTests() {
+  for (int count : {1, 7, 37, 45})
+    for (int mask = 1; mask < 8; ++mask) {
+      Simulation sim(count);
+      sim.setWorldSize(256);
+      sim.setParameter(FleeEnabled, 0);
+      sim.setParameter(TurnRate, 720);
+      for (auto id : {CohesionRadius, AlignmentRadius, RepulsionRadius})
+        sim.setParameter(id, 128);
+      sim.setParameter(CohesionEnabled, mask & 1 ? 1 : 0);
+      sim.setParameter(AlignmentEnabled, mask & 2 ? 1 : 0);
+      sim.setParameter(RepulsionEnabled, mask & 4 ? 1 : 0);
+      for (int i = 0; i < count; ++i)
+        sim.setBoid(i,
+                    i < 2 ? Vec{255, 1}
+                          : Vec{float((i * 73) % 256), float((i * 113) % 256)},
+                    i * .37f);
+      const auto before = sim.state();
+      sim.tick(1.f);
+      const auto after = sim.state();
+      for (int i = 0; i < count; ++i) {
+        Vec offset, velocity, separation;
+        for (int j = 0; j < count; ++j)
+          if (i != j) {
+            const Vec d = delta(before[i].position, before[j].position, 256);
+            const float q = length2(d);
+            if (q > 128 * 128)
+              continue;
+            if (mask & 1)
+              offset += d;
+            if (mask & 2)
+              velocity += before[j].velocity;
+            if (mask & 4)
+              separation += q < 1e-8f
+                                ? Vec{i < j ? 1.f : -1.f, i < j ? .5f : -.5f}
+                                : d * (-1 / (q + .01f));
+          }
+        Vec desired = unit(offset) * sim.parameter(CohesionWeight) +
+                      unit(velocity) * sim.parameter(AlignmentWeight) +
+                      unit(separation) * sim.parameter(RepulsionWeight);
+        if (length2(desired) < 1e-10f)
+          desired = before[i].velocity;
+        const Vec expected = unit(desired) * sim.parameter(Speed);
+        check(length2(after[i].velocity - expected) < .0001f,
+              "SIMD neighbour steering matches all-pairs reference");
+      }
+    }
+  // Radius 100 on a 256 map needs the all-predator fallback: a wrapped
+  // nine-cell-wide neighbourhood must not apply the same predator twice.
+  Simulation flee(2);
+  flee.setWorldSize(256);
+  for (auto id : {CohesionEnabled, AlignmentEnabled, RepulsionEnabled})
+    flee.setParameter(id, 0);
+  flee.setParameter(SwarmEnabled, 1);
+  flee.setParameter(TurnRate, 720);
+  flee.setParameter(CrossingSpeed, 20);
+  flee.setBoid(0, {200, 100}, 0);
+  flee.setBoid(1, {100, 100}, 0);
+  flee.predators.push_back({{130, 140}, 0, 0, true});
+  flee.tick(1);
+  const Vec desired =
+      Vec{1, 0} * flee.parameter(SwarmWeight) +
+      Flee{}({100, 100}, flee.predators, 100, 256) * flee.parameter(FleeWeight);
+  check(length2(flee.state()[1].velocity -
+                unit(desired) * flee.parameter(Speed)) < .0001f,
+        "wide predator broadphase applies each predator once");
+}
+
 void tuningTests() {
   Parameters settings;
   for (int id = 0; id < ParameterCount; ++id) {
@@ -508,6 +578,7 @@ int main() {
               boid.position.y >= 0 && boid.position.y < 256 &&
               std::isfinite(boid.position.y),
           "dense 256 cluster stable at maximum interaction radius");
+  neighbourReferenceTests();
   tuningTests();
   launchAndMapTests();
   std::printf("PASS: %d checks\n", checks);

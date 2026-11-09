@@ -122,6 +122,13 @@ export class GPUBoids {
       size: 4096,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
+    this.neighbourPlans = d.createBuffer({
+      label: "Shared neighbour sampling plans",
+      size: 1024 * 9 * 9 * 16,
+      usage: GPUBufferUsage.STORAGE,
+    });
+    this.configArena = new ArrayBuffer(this.configBytes);
+    this.predatorArena = new Float32Array(32 * 4);
     this.cellIndices = d.createBuffer({
       label: "Bounded spatial representatives",
       size: 1024 * 128 * 4,
@@ -150,7 +157,7 @@ export class GPUBoids {
             minBindingSize: this.configBytes,
           },
         },
-        ...[1, 2, 3, 4, 5, 6, 7].map((binding) => ({
+        ...[1, 2, 3, 4, 5, 6, 7, 8].map((binding) => ({
           binding,
           visibility: GPUShaderStage.COMPUTE,
           buffer: {
@@ -225,6 +232,7 @@ export class GPUBoids {
       "rescale",
       "clearCells",
       "binBoids",
+      "preparePlans",
       "updateWind",
       "advance",
     ];
@@ -257,14 +265,14 @@ export class GPUBoids {
     if (this.timers) {
       this.queries = d.createQuerySet({
         type: "timestamp",
-        count: MAX_STEPS * 2,
+        count: MAX_STEPS * 2 + 2,
       });
       this.resolveBuffer = d.createBuffer({
         size: 256,
         usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
       });
       this.readTimer = d.createBuffer({
-        size: 64,
+        size: 80,
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
       });
     }
@@ -299,6 +307,7 @@ export class GPUBoids {
           { binding: 4, resource: { buffer: this.cellIndices } },
           { binding: 5, resource: { buffer: this.wind } },
           { binding: 7, resource: { buffer: this.huntDensity } },
+          { binding: 8, resource: { buffer: this.neighbourPlans } },
           {
             binding: 6,
             resource: { buffer: this.predators, size: this.predatorStride },
@@ -337,7 +346,7 @@ export class GPUBoids {
     old.destroy();
   }
   writeConfig(slot, settings, dt, alpha, ratio = 1) {
-    const buffer = new ArrayBuffer(this.configBytes),
+    const buffer = this.configArena,
       f = new Float32Array(buffer),
       u = new Uint32Array(buffer);
     const world = this.bridge.worldSize();
@@ -353,14 +362,34 @@ export class GPUBoids {
     const hunting =
       settings["predator-mode"] === 2 && this.bridge.residentCount() > 0;
     u.set([this.ticks, (this.ticks * 7919) % COUNT, Number(hunting), 0], 8);
-    f[12] = ratio;
+    const turn = ((settings["turn-rate"] * Math.PI) / 180) * dt;
+    f[2] = Math.sin(turn * settings["shoal-turn"]);
+    f.set(
+      [
+        ratio,
+        Math.cos(turn),
+        Math.sin(turn),
+        Math.cos(turn * settings["shoal-turn"]),
+      ],
+      12,
+    );
+    u[11] = Number(
+      this.windFrame >= 0 && this.windFrame + 1 === Math.floor(this.ticks / 4),
+    );
     for (const spec of this.definitions) f[16 + spec.id] = settings[spec.name];
+    for (const name of ["shoal-rearm", "shoal-threshold"]) {
+      const spec = this.definitions.find((p) => p.name === name);
+      f[16 + spec.id] = Math.cos((settings[name] * Math.PI) / 180);
+    }
     this.device.queue.writeBuffer(
       this.uniform,
       slot * this.uniformStride,
       buffer,
     );
-    const data = new Float32Array(Math.max(4, predatorCount * 4));
+    const length = Math.max(4, predatorCount * 4);
+    if (this.predatorArena.length < length)
+      this.predatorArena = new Float32Array(length * 2);
+    const data = this.predatorArena.subarray(0, length);
     for (let i = 0; i < predatorCount; i++) {
       const p = this.bridge.predator(i);
       data.set([p.x, p.y, Math.cos(p.heading), Math.sin(p.heading)], i * 4);
@@ -370,7 +399,7 @@ export class GPUBoids {
       slot * this.predatorStride,
       data,
     );
-    return { radius, predatorCount, hunting };
+    return { radius, predatorCount, hunting, side };
   }
   dispatch(encoder, name, slot, groups, timestamps) {
     const descriptor = { label: name };
@@ -431,7 +460,7 @@ export class GPUBoids {
     const timing =
       this.timers &&
       !this.mapping &&
-      this.frames % 30 === 0 &&
+      (this.profileEveryFrame || this.frames % 30 === 0) &&
       this.accumulator >= 1 / 60;
     const windSignature = [
       "wind-enabled",
@@ -467,10 +496,19 @@ export class GPUBoids {
       );
       if (config.radius > 0 || config.hunting)
         this.dispatch(encoder, "binBoids", steps, Math.ceil(COUNT / 128));
+      if (config.radius > 0)
+        this.dispatch(
+          encoder,
+          "preparePlans",
+          steps,
+          Math.ceil((config.side * config.side * 9) / 128),
+        );
       if (
         settings["wind-enabled"] &&
         settings["wind-weight"] > 0 &&
-        this.windFrame !== Math.floor(this.ticks / 4)
+        (this.windFrame < 0 ||
+          (settings["wind-time"] > 0 &&
+            this.windFrame !== Math.floor(this.ticks / 4)))
       ) {
         this.dispatch(encoder, "updateWind", steps, 8);
         this.windFrame = Math.floor(this.ticks / 4);
@@ -490,12 +528,19 @@ export class GPUBoids {
     }
     // The last tick's uniform supplies the same settings and interpolation for render.
     const renderSlot = Math.max(0, steps - 1);
-    this.writeConfig(
-      renderSlot,
-      settings,
-      1 / 60,
-      Math.min(1, this.accumulator * 60),
-    );
+    if (steps === 0)
+      this.writeConfig(
+        renderSlot,
+        settings,
+        1 / 60,
+        Math.min(1, this.accumulator * 60),
+      );
+    else
+      this.device.queue.writeBuffer(
+        this.uniform,
+        renderSlot * this.uniformStride + 12,
+        new Float32Array([Math.min(1, this.accumulator * 60)]),
+      );
     const hue = settings["boid-hue"] / 60;
     const channel = (shift) =>
       0.065 *
@@ -504,6 +549,15 @@ export class GPUBoids {
           Math.max(0, Math.min(1, Math.abs(((hue + shift) % 6) - 3) - 1)));
     const pass = encoder.beginRenderPass({
       label: "100,000 boids",
+      ...(timing
+        ? {
+            timestampWrites: {
+              querySet: this.queries,
+              beginningOfPassWriteIndex: steps * 2,
+              endOfPassWriteIndex: steps * 2 + 1,
+            },
+          }
+        : {}),
       colorAttachments: [
         {
           view: this.context.getCurrentTexture().createView(),
@@ -524,11 +578,11 @@ export class GPUBoids {
       encoder.resolveQuerySet(
         this.queries,
         0,
-        steps * 2,
+        steps * 2 + 2,
         this.resolveBuffer,
         0,
       );
-      encoder.copyBufferToBuffer(this.resolveBuffer, 0, this.readTimer, 0, 64);
+      encoder.copyBufferToBuffer(this.resolveBuffer, 0, this.readTimer, 0, 80);
       this.mapping = true;
     }
     const densityRead =
@@ -590,6 +644,12 @@ export class GPUBoids {
           for (let i = 0; i < steps; i++)
             total += Number(values[i * 2 + 1] - values[i * 2]);
           this.gpuMs = total / steps / 1e6;
+          const render =
+            Number(values[steps * 2 + 1] - values[steps * 2]) / 1e6;
+          this.profileCompute = (this.profileCompute || 0) + total / 1e6;
+          this.profileRender = (this.profileRender || 0) + render;
+          this.profileSamples = (this.profileSamples || 0) + 1;
+          this.profileSteps = (this.profileSteps || 0) + steps;
           this.readTimer.unmap();
           this.mapping = false;
         })

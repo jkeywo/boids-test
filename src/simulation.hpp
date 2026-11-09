@@ -96,18 +96,28 @@ struct Swarm {
   }
 };
 struct Flee {
+  static Vec from(Vec p, const Predator &q, float radius, float extent) {
+    Vec d = delta(q.position, p, extent);
+    const float squared = length2(d);
+    if (squared >= radius * radius)
+      return {};
+    if (squared < 1e-8f)
+      return Vec{std::cos(q.heading + pi / 2), std::sin(q.heading + pi / 2)} *
+             (1 - std::sqrt(squared) / radius);
+    return d * (1 / std::sqrt(squared) - 1 / radius);
+  }
   Vec operator()(Vec p, const std::vector<Predator> &predators,
                  float radius = 100, float extent = size) const {
     Vec force;
-    for (const auto &q : predators) {
-      Vec d = delta(q.position, p, extent);
-      float l = length2(d);
-      if (l < radius * radius) {
-        if (l < 1e-8f)
-          d = {std::cos(q.heading + pi / 2), std::sin(q.heading + pi / 2)};
-        force += unit(d) * (1 - std::sqrt(l) / radius);
-      }
-    }
+    for (const auto &q : predators)
+      force += from(p, q, radius, extent);
+    return force;
+  }
+  Vec operator()(Vec p, const std::vector<const Predator *> &predators,
+                 float radius, float extent) const {
+    Vec force;
+    for (const auto *q : predators)
+      force += from(p, *q, radius, extent);
     return force;
   }
 };
@@ -178,11 +188,26 @@ class Simulation {
   flecs::world world;
   flecs::query<Boid> query;
   std::vector<Boid> snapshot;
-  std::vector<int> packed;
+  // Position/velocity are adjacent for four-wide transposed loads. Float IDs
+  // are exact at this population and allow vector self/coincidence masks.
+  struct NeighbourRecord {
+    Vec position, velocity;
+    float index;
+  };
+  struct SampleBucket {
+    int offset = 0, count = 0, take = 0;
+    float stride = 0;
+  };
+  // Nine rotated remainder allocations preserve the original sampling quotas.
+  using SamplePlan = std::array<SampleBucket, 9>;
+  std::vector<NeighbourRecord> packed;
+  std::vector<std::array<SamplePlan, 9>> plans;
+  std::vector<Vec> previousPositions;
+
   std::array<int, cellCount + 1> offsets{};
   std::array<int, cellCount> counts{}, cursor{};
-  std::array<std::vector<Predator>, 64> predatorCells;
-  std::array<Vec, cellCount> windPrevious{}, windNext{};
+  std::array<std::vector<const Predator *>, 64> predatorCells;
+  std::array<Vec, cellCount> windPrevious{}, windNext{}, windBlended{};
   Parameters parameters;
   std::array<uint32_t, cellCount> huntDensity{};
   uint32_t randomState = 0x12345678, predatorSerial = 0;
@@ -207,9 +232,16 @@ class Simulation {
   void fillWind(std::array<Vec, cellCount> &field, float time);
 
 public:
+#ifdef BOIDS_PROFILE
+  std::array<double, 4>
+      profileMs{}; // environment, predator broadphase, grid, steering
+  uint64_t profileTicks = 0;
+#endif
   std::vector<Predator> predators;
   explicit Simulation(int count = population);
   void tick(float dt);
+  void resetInterpolation();
+  void writeRenderInstances(std::vector<float> &output, float alpha);
   void advanceEnvironment(float dt, bool includeWind = true,
                           bool nativeHuntDensity = true);
   void setHuntDensity(const std::array<uint32_t, cellCount> &density) {

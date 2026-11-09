@@ -1,3 +1,32 @@
+# CPU and GPU optimisation pass — 9 November 2026
+
+Compared with `f7a91f0`, using identical population, map, candidate budgets and functor settings. Hardware: Windows x64, Intel Core Ultra 9 275HX, NVIDIA RTX 5090 Laptop GPU, installed Chrome 156 headless with the non-fallback NVIDIA adapter. Each fresh scene warms 120 fixed 60 Hz ticks, then measures 600 ticks; three alternating before/after runs. CPU profiling fixes the full 48-candidate budget. GPU retains 32 candidates and 128 representatives per cell. Normal production builds retain adaptive CPU quality. The baseline received only the same profiling instrumentation. Raw samples and metadata: [benchmarks/optimization-pass.json](benchmarks/optimization-pass.json).
+
+CPU numbers measure simulation plus CPU render preparation/WebGL submission. GPU numbers are completed hardware timestamps for **compute plus rendering**, excluding the asynchronous timer readback and host waits. These are processing costs, not uncapped display FPS or end-to-end browser latency. The RAF cap remains 60 Hz. CPU clock/load variation is visible in the ranges below; a median ratio is not a guaranteed gain on every run or device.
+
+| Mode / scene | Before median ms | After median ms | Median speedup | Before range ms | After range ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CPU / baseline | 7.692 | 3.430 | 2.24x | 6.590–8.116 | 3.378–4.417 |
+| CPU / heavy | 8.733 | 4.113 | 2.12x | 7.274–9.177 | 4.045–5.442 |
+| CPU / tiny | 8.324 | 3.988 | 2.09x | 7.905–10.548 | 3.969–5.148 |
+| CPU / swarm | 0.663 | 0.246 | 2.70x | 0.548–0.711 | 0.240–0.252 |
+| GPU / baseline | 0.262 | 0.199 | 1.31x | 0.262–0.263 | 0.199–0.201 |
+| GPU / heavy | 0.300 | 0.220 | 1.36x | 0.299–0.301 | 0.216–0.220 |
+| GPU / tiny | 0.366 | 0.171 | 2.14x | 0.365–0.380 | 0.169–0.177 |
+| GPU / swarm | 0.055 | 0.055 | 0.98x | 0.055–0.057 | 0.054–0.057 |
+
+Baseline: 1024 map, default flocking, no predators. Heavy: 1024 map, default flocking plus six-octave wind, shoal, direction hue and 16 Hunt predators. Tiny: the same heavy settings on a 256 map. Swarm: 1024 map, only Swarm steering enabled, no predators. All 10,000 CPU or 100,000 GPU boids remain active. The two implementations already use different bounded samples; floating-point summation/steering changes can also cause trajectories to diverge over time.
+
+The CPU meets the 2x target in these median frame-processing samples. GPU heavy/tiny compute alone drops from approximately 0.318 to 0.121 ms; including rendering gives 2.14x. GPU baseline/heavy on the larger map improve by 1.31x/1.36x, below target. GPU swarm-only is effectively unchanged (0.98x median); it already has very little compute work. Rendering by itself did not show a reliable gain. No claim of universal 2x speedup is made.
+
+The pass covers packed SIMD neighbour reads and shared sampling plans, vector steering/shoal thresholds, wind interpolation/keyframe reuse, predator broadphase storage/flee arithmetic, direct Flecs instance extraction, GPU colour caching and reused host staging/upload work. Hunt density resolution and cadence, functor radii/weights and candidate budgets are preserved. The extra GPU plan buffer uses approximately 1.27 MiB and brings compute storage bindings to WebGPU's standard limit of eight. CPU plans use approximately 1.27 MiB. WASM now uses SIMD128; native x64 uses SSE2, with a scalar path on other native targets.
+
+Reproduce current processing costs with `python tools/build.py --test --profile`, `$env:PERF_FRAMES='600'`, then `npm run benchmark:stages`. Preserve a profiling build under a different directory and set `PERF_SITE` to alternate versions; `PERF_OUTPUT` selects each JSON output. This harness freezes normal RAF and drives completed fixed ticks directly. Production validation: MSVC native and Node/WASM each pass **12,217 checks**, including 631 new all-pairs/SIMD and predator-broadphase checks. Installed Chrome passes CPU and GPU browser suites for controls, colour, wrapped maps, wind/shoal, predator paths/density, presets, persistence, fallback and desktop/mobile layout. The GPU Swarm check validates 99,990 records with zero invalid records and >99% aligned to the correct parents.
+
+Normal RAF production runs, 30 seconds per scenario: CPU baseline/tiny report 60.00 FPS and 60.00/59.97 simulation Hz, retaining the full 48-candidate budget. GPU baseline/tiny/Hunt report 59.99/59.98/60.00 completed FPS and approximately 60 simulation Hz. GPU compute averages 0.176/0.116/0.161 ms/tick respectively. These are hardware-specific 60 Hz observations, not a promise for other GPUs or mobile hardware. The raw production reports are included in the measurement JSON.
+
+---
+
 # Flock-only presets and fixed predator speed variation
 
 Release [221081b](https://github.com/jkeywo/boids-test/commit/221081b) separates flock presets from generic settings. The six presets store only boid motion, functors (including predator-flee response) and boid appearance. Map size, backend, resident count and all Predators-panel controls are global and autosaved. Switching or resetting a flock preset preserves live predators and their identities. Version 2 saves migrate generic values from the formerly active slot; version 1 saves migrate their scene-wide values. The version 3 record retains the existing storage key.

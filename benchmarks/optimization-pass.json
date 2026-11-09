@@ -1,0 +1,1200 @@
+{
+  "date": "2026-11-09",
+  "baselineCommit": "f7a91f0",
+  "hardware": {
+    "os": "Windows x64",
+    "cpu": "Intel Core Ultra 9 275HX",
+    "gpu": "NVIDIA RTX 5090 Laptop GPU"
+  },
+  "method": {
+    "warmupTicks": 120,
+    "measuredTicks": 600,
+    "runsPerVersion": 3,
+    "ordering": "before, after, repeated three times",
+    "cpuPopulation": 10000,
+    "cpuCandidateBudget": 48,
+    "gpuPopulation": 100000,
+    "gpuCandidateBudget": 32,
+    "gpuCellPool": 128,
+    "cpuMetric": "host time per fixed tick plus WebGL preparation/submission; excludes completed raster time",
+    "gpuMetric": "hardware timestamp compute plus render per completed tick/frame; excludes host waits",
+    "baseline": "original implementation with stage profiling and fixed CPU budget, no optimisation changes"
+  },
+  "runs": {
+    "before": [
+      {
+        "browser": "156.0.8078.80",
+        "results": [
+          {
+            "mode": "cpu",
+            "scene": "baseline",
+            "wallMs": 7.6921666666616995,
+            "stages": [
+              0.0004999999999995453,
+              0,
+              0.11350000000001159,
+              7.417999999999991,
+              7.532000000000003,
+              0.12983333349227905,
+              7.691333333328366
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "heavy",
+            "wallMs": 8.7331666666766,
+            "stages": [
+              0.3565000000000047,
+              0.0008333333333325754,
+              0.117333333333324,
+              8.072166666666652,
+              8.546833333333312,
+              0.1558333336065213,
+              8.7328333333383
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "tiny",
+            "wallMs": 10.548166666651765,
+            "stages": [
+              0.29999999999999244,
+              0.003333333333328786,
+              0.12316666666666302,
+              9.90666666666668,
+              10.333166666666665,
+              0.18083333370586235,
+              10.547166666661699
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "swarm",
+            "wallMs": 0.7114999999850988,
+            "stages": [
+              0.0006666666666664393,
+              0.0003333333333333144,
+              0.021500000000000814,
+              0.5526666666666658,
+              0.5751666666666663,
+              0.10533333304027716,
+              0.7109999999900659
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "gpu",
+            "scene": "baseline",
+            "wallMs": 3.1921666666616995,
+            "computeMs": 0.21506730666666585,
+            "renderMs": 0.04674901333333376,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "heavy",
+            "wallMs": 3.614000000009934,
+            "computeMs": 0.2519859200000006,
+            "renderMs": 0.04937045333333379,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "tiny",
+            "wallMs": 3.578833333328366,
+            "computeMs": 0.3181772799999996,
+            "renderMs": 0.04696746666666709,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "swarm",
+            "wallMs": 3.0323333333184324,
+            "computeMs": 0.005789013333333329,
+            "renderMs": 0.04882432000000047,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          }
+        ]
+      },
+      {
+        "browser": "156.0.8078.80",
+        "results": [
+          {
+            "mode": "cpu",
+            "scene": "baseline",
+            "wallMs": 8.116166666671633,
+            "stages": [
+              0.0006666666666637866,
+              0.000166666666667273,
+              0.11650000000000167,
+              7.827499999999984,
+              7.944833333333316,
+              0.1375000003973643,
+              8.114833333318431
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "heavy",
+            "wallMs": 9.177000000004966,
+            "stages": [
+              0.3801666666666635,
+              0.0011666666666656055,
+              0.11516666666667978,
+              8.479666666666665,
+              8.976166666666673,
+              0.16866666657229265,
+              9.175666666651766
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "tiny",
+            "wallMs": 8.323666666671635,
+            "stages": [
+              0.23900000000000166,
+              0.003333333333333712,
+              0.10016666666668053,
+              7.81633333333332,
+              8.158833333333336,
+              0.13733333292106786,
+              8.322333333343268
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "swarm",
+            "wallMs": 0.6629999999950329,
+            "stages": [
+              0.0011666666666666477,
+              0.0003333333333334091,
+              0.01600000000000051,
+              0.5156666666666663,
+              0.5331666666666668,
+              0.10616666701932748,
+              0.6626666666567326
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "gpu",
+            "scene": "baseline",
+            "wallMs": 2.757333333318432,
+            "computeMs": 0.216814933333333,
+            "renderMs": 0.04631210666666708,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "heavy",
+            "wallMs": 3.2198333333432676,
+            "computeMs": 0.25264128000000063,
+            "renderMs": 0.04707669333333376,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "tiny",
+            "wallMs": 3.33,
+            "computeMs": 0.31621119999999936,
+            "renderMs": 0.049698133333333824,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "swarm",
+            "wallMs": 2.823999999985099,
+            "computeMs": 0.005898239999999994,
+            "renderMs": 0.04860586666666713,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          }
+        ]
+      },
+      {
+        "browser": "156.0.8078.80",
+        "results": [
+          {
+            "mode": "cpu",
+            "scene": "baseline",
+            "wallMs": 6.59,
+            "stages": [
+              0.0005000000000003032,
+              0.0001666666666665151,
+              0.09816666666667326,
+              6.358833333333322,
+              6.457666666666661,
+              0.10333333355685075,
+              6.589166666616996
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "heavy",
+            "wallMs": 7.274499999980132,
+            "stages": [
+              0.3029999999999958,
+              0.0008333333333333334,
+              0.09066666666666606,
+              6.731833333333321,
+              7.126333333333317,
+              0.12166666698952516,
+              7.273166666676601
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "tiny",
+            "wallMs": 7.9046666666617,
+            "stages": [
+              0.23216666666665864,
+              0.0033333333333310598,
+              0.09700000000000993,
+              7.42549999999999,
+              7.757999999999989,
+              0.12033333306511243,
+              7.90349999991556
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "swarm",
+            "wallMs": 0.5481666666517655,
+            "stages": [
+              0.000500000000000019,
+              0.0004999999999999242,
+              0.019499999999998654,
+              0.4196666666666697,
+              0.4401666666666682,
+              0.0823333331445853,
+              0.5476666666815678
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "gpu",
+            "scene": "baseline",
+            "wallMs": 2.7418333333233993,
+            "computeMs": 0.21386581333333254,
+            "renderMs": 0.048059733333333784,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "heavy",
+            "wallMs": 2.790666666676601,
+            "computeMs": 0.2511121066666675,
+            "renderMs": 0.04838741333333378,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "tiny",
+            "wallMs": 2.8006666666766007,
+            "computeMs": 0.33368746666666416,
+            "renderMs": 0.04587520000000041,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "swarm",
+            "wallMs": 2.602999999995033,
+            "computeMs": 0.0061166933333333265,
+            "renderMs": 0.051118080000000496,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          }
+        ]
+      }
+    ],
+    "after": [
+      {
+        "browser": "156.0.8078.80",
+        "results": [
+          {
+            "mode": "cpu",
+            "scene": "baseline",
+            "wallMs": 4.416666666666667,
+            "stages": [
+              0.0003333333333330302,
+              0.0003333333333334091,
+              0.28950000000000614,
+              4.025833333333323,
+              4.315999999999996,
+              0.09500000004967053,
+              4.415666666651766
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "heavy",
+            "wallMs": 5.442333333318432,
+            "stages": [
+              0.39483333333332593,
+              0.0010000000000021222,
+              0.28433333333333055,
+              4.635500000000004,
+              5.315666666666663,
+              0.12150000023345152,
+              5.4408333332836625
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "tiny",
+            "wallMs": 5.148499999990066,
+            "stages": [
+              0.2729999999999859,
+              0.0003333333333337881,
+              0.10150000000001266,
+              4.662999999999988,
+              5.037833333333321,
+              0.10566666702429453,
+              5.1471666666616995
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "swarm",
+            "wallMs": 0.25183333332339924,
+            "stages": [
+              0.0008333333333333334,
+              0.0003333333333334091,
+              0.018333333333332955,
+              0.17066666666666536,
+              0.19016666666666504,
+              0.058999999513228735,
+              0.2516666666418314
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "gpu",
+            "scene": "baseline",
+            "wallMs": 3.330499999995033,
+            "computeMs": 0.1524804266666676,
+            "renderMs": 0.04620288000000041,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "heavy",
+            "wallMs": 3.4853333333383003,
+            "computeMs": 0.17170432000000022,
+            "renderMs": 0.048496640000000465,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "tiny",
+            "wallMs": 3.2768333333233994,
+            "computeMs": 0.12135082666666795,
+            "renderMs": 0.04718592000000042,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "swarm",
+            "wallMs": 3.1003333333134653,
+            "computeMs": 0.007973546666666654,
+            "renderMs": 0.048605866666667115,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          }
+        ]
+      },
+      {
+        "browser": "156.0.8078.80",
+        "results": [
+          {
+            "mode": "cpu",
+            "scene": "baseline",
+            "wallMs": 3.378499999990066,
+            "stages": [
+              0.001333333333333447,
+              0.0003333333333334091,
+              0.21833333333333105,
+              3.091833333333333,
+              3.3118333333333307,
+              0.06366666667163372,
+              3.378166666676601
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "heavy",
+            "wallMs": 4.113499999990066,
+            "stages": [
+              0.3076666666666593,
+              0.0003333333333330302,
+              0.21850000000000666,
+              3.493333333333331,
+              4.01983333333333,
+              0.09116666664679846,
+              4.113166666676601
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "tiny",
+            "wallMs": 3.9883333333333333,
+            "stages": [
+              0.20850000000000213,
+              0.0003333333333330302,
+              0.06950000000000879,
+              3.6246666666666565,
+              3.9030000000000005,
+              0.08216666668653488,
+              3.987500000024835
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "swarm",
+            "wallMs": 0.2459999999900659,
+            "stages": [
+              0,
+              0.0003333333333333144,
+              0.014000000000000009,
+              0.16633333333333364,
+              0.18066666666666695,
+              0.0631666666517655,
+              0.24566666662693024
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "gpu",
+            "scene": "baseline",
+            "wallMs": 2.8576666666815678,
+            "computeMs": 0.15116970666666787,
+            "renderMs": 0.04805973333333379,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "heavy",
+            "wallMs": 2.7873333333432675,
+            "computeMs": 0.16908288000000024,
+            "renderMs": 0.05079040000000053,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "tiny",
+            "wallMs": 2.8825,
+            "computeMs": 0.12004010666666791,
+            "renderMs": 0.05057194666666717,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "swarm",
+            "wallMs": 2.6931666666517655,
+            "computeMs": 0.0061166933333333265,
+            "renderMs": 0.04937045333333381,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          }
+        ]
+      },
+      {
+        "browser": "156.0.8078.80",
+        "results": [
+          {
+            "mode": "cpu",
+            "scene": "baseline",
+            "wallMs": 3.4301666666567328,
+            "stages": [
+              0,
+              0.0001666666666665151,
+              0.22649999999999787,
+              3.13416666666667,
+              3.3608333333333347,
+              0.06683333354691665,
+              3.4298333333432676
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "heavy",
+            "wallMs": 4.045,
+            "stages": [
+              0.3031666666666691,
+              0.0008333333333340912,
+              0.2128333333333425,
+              3.436999999999995,
+              3.9538333333333413,
+              0.08783333336313566,
+              4.044333333298564
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "tiny",
+            "wallMs": 3.9691666666666667,
+            "stages": [
+              0.21366666666667433,
+              0.0003333333333337881,
+              0.06983333333332704,
+              3.5973333333333257,
+              3.881166666666661,
+              0.08466666668653489,
+              3.9686666666716337
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "cpu",
+            "scene": "swarm",
+            "wallMs": 0.23983333334326745,
+            "stages": [
+              0.0001666666666666572,
+              0.0003333333333333144,
+              0.01433333333333323,
+              0.1660000000000007,
+              0.1808333333333339,
+              0.056666666840513545,
+              0.23966666668653488
+            ],
+            "budget": 48
+          },
+          {
+            "mode": "gpu",
+            "scene": "baseline",
+            "wallMs": 2.5708333333333333,
+            "computeMs": 0.1512789333333346,
+            "renderMs": 0.04947968000000048,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "heavy",
+            "wallMs": 2.7586666666716337,
+            "computeMs": 0.1674444800000004,
+            "renderMs": 0.0483874133333338,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "tiny",
+            "wallMs": 2.7016666666666667,
+            "computeMs": 0.12539221333333456,
+            "renderMs": 0.051227306666667194,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          },
+          {
+            "mode": "gpu",
+            "scene": "swarm",
+            "wallMs": 2.9276666666567324,
+            "computeMs": 0.005679786666666661,
+            "renderMs": 0.048496640000000445,
+            "samples": 600,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "baselineWasmSha256": "4e1d37aafef3c65e8a5caee69eb26e6f2be45d80eaac1b26079c80f995ba922c",
+  "productionValidation": {
+    "cpu": {
+      "testedAt": "2026-11-09T13:26:27.612Z",
+      "url": "http://127.0.0.1:49674/boids-test/",
+      "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 Laptop GPU (0x00002C18) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "headless": true,
+      "browserEngine": "chromium",
+      "channel": "chrome",
+      "mobileHardwareTested": false,
+      "results": [
+        {
+          "scenario": "baseline",
+          "frames": 1801,
+          "meanFps": 60.00133262260128,
+          "p50ms": 16.69999999999709,
+          "p95ms": 16.80000000000291,
+          "p99ms": 16.900000000001455,
+          "meanTickMs": 4.0064963873461314,
+          "simulationHz": 60.00133262260128,
+          "minNeighbourBudget": 48,
+          "maxNeighbourBudget": 48,
+          "renderResolution": 1024,
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "population": 10000,
+          "backend": "C++/WASM + WebGL 2",
+          "gpu": null,
+          "meanGpuComputeMs": null,
+          "worldSize": 1024,
+          "crossingPredators": 0,
+          "totalPredators": 0,
+          "settings": {
+            "speed": 70,
+            "turn-rate": 180,
+            "cohesion-enabled": 1,
+            "cohesion-radius": 32,
+            "cohesion-weight": 0.6500000357627869,
+            "alignment-enabled": 1,
+            "alignment-radius": 32,
+            "alignment-weight": 1,
+            "repulsion-enabled": 1,
+            "repulsion-radius": 10,
+            "repulsion-weight": 1.600000023841858,
+            "flee-enabled": 1,
+            "flee-radius": 100,
+            "flee-weight": 5,
+            "shoal-enabled": 0,
+            "shoal-threshold": 45,
+            "shoal-rearm": 20,
+            "shoal-duration": 0.6000000238418579,
+            "shoal-cooldown": 0.800000011920929,
+            "shoal-speed": 1.5,
+            "shoal-turn": 2,
+            "wind-enabled": 0,
+            "wind-octaves": 3,
+            "wind-scale": 160,
+            "wind-time": 0.14999999105930328,
+            "wind-weight": 1,
+            "wind-x": 1,
+            "wind-y": 1,
+            "wind-persistence": 0.5,
+            "wind-lacunarity": 2,
+            "orbit-radius": 400,
+            "orbit-period": 20,
+            "crossing-speed": 180,
+            "boid-hue": 183,
+            "direction-hue": 0,
+            "shoal-hue-enabled": 1,
+            "shoal-hue-offset": -132,
+            "predator-mode": 0,
+            "predator-speed": 100,
+            "predator-turn-rate": 120,
+            "predator-noise-scale": 192,
+            "predator-noise-time": 0.19999998807907104,
+            "predator-hunt-radius": 192,
+            "swarm-enabled": 0,
+            "swarm-weight": 1
+          }
+        },
+        {
+          "scenario": "wind-tiny",
+          "frames": 1801,
+          "meanFps": 60.00133262260128,
+          "p50ms": 16.69999999999709,
+          "p95ms": 16.89999999999418,
+          "p99ms": 17,
+          "meanTickMs": 4.448639643715197,
+          "simulationHz": 59.9680170575693,
+          "minNeighbourBudget": 48,
+          "maxNeighbourBudget": 48,
+          "renderResolution": 256,
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "population": 10000,
+          "backend": "C++/WASM + WebGL 2",
+          "gpu": null,
+          "meanGpuComputeMs": null,
+          "worldSize": 256,
+          "crossingPredators": 0,
+          "totalPredators": 16,
+          "settings": {
+            "speed": 70,
+            "turn-rate": 180,
+            "cohesion-enabled": 1,
+            "cohesion-radius": 32,
+            "cohesion-weight": 0.6500000357627869,
+            "alignment-enabled": 1,
+            "alignment-radius": 32,
+            "alignment-weight": 1,
+            "repulsion-enabled": 1,
+            "repulsion-radius": 10,
+            "repulsion-weight": 1.600000023841858,
+            "flee-enabled": 1,
+            "flee-radius": 100,
+            "flee-weight": 5,
+            "shoal-enabled": 1,
+            "shoal-threshold": 45,
+            "shoal-rearm": 20,
+            "shoal-duration": 0.6000000238418579,
+            "shoal-cooldown": 0.800000011920929,
+            "shoal-speed": 1.5,
+            "shoal-turn": 2,
+            "wind-enabled": 1,
+            "wind-octaves": 6,
+            "wind-scale": 160,
+            "wind-time": 0.14999999105930328,
+            "wind-weight": 1,
+            "wind-x": 1,
+            "wind-y": 1,
+            "wind-persistence": 0.5,
+            "wind-lacunarity": 2,
+            "orbit-radius": 100,
+            "orbit-period": 20,
+            "crossing-speed": 180,
+            "boid-hue": 183,
+            "direction-hue": 0,
+            "shoal-hue-enabled": 1,
+            "shoal-hue-offset": -132,
+            "predator-mode": 0,
+            "predator-speed": 100,
+            "predator-turn-rate": 120,
+            "predator-noise-scale": 192,
+            "predator-noise-time": 0.19999998807907104,
+            "predator-hunt-radius": 192,
+            "swarm-enabled": 0,
+            "swarm-weight": 1
+          }
+        }
+      ]
+    },
+    "gpu": {
+      "testedAt": "2026-11-09T13:28:26.401Z",
+      "url": "http://127.0.0.1:58081/boids-test/",
+      "channel": "chrome",
+      "software": false,
+      "headless": true,
+      "mobileHardwareTested": false,
+      "results": [
+        {
+          "scenario": "gpu-baseline",
+          "frames": 1800,
+          "meanFps": 59.989401872341844,
+          "p50ms": 16.69999999999891,
+          "p95ms": 16.80000000000109,
+          "p99ms": 16.900000000001455,
+          "meanTickMs": 0.20094444450404908,
+          "simulationHz": 60.00120002400048,
+          "minNeighbourBudget": 32,
+          "maxNeighbourBudget": 32,
+          "renderResolution": 1024,
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "population": 100000,
+          "backend": "WebGPU compute",
+          "gpu": {
+            "population": 100000,
+            "densityReads": 0,
+            "steps": 1891,
+            "submittedSteps": 1891,
+            "submittedFrames": 1893,
+            "completedFrames": 1893,
+            "gpuMs": 0.196608,
+            "cpuSubmitMs": 0.4000000059604645,
+            "budget": 32,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            },
+            "inflight": 0,
+            "errors": []
+          },
+          "meanGpuComputeMs": 0.17640106666666827,
+          "worldSize": 1024,
+          "crossingPredators": 0,
+          "totalPredators": 0,
+          "settings": {
+            "speed": 70,
+            "turn-rate": 180,
+            "cohesion-enabled": 1,
+            "cohesion-radius": 32,
+            "cohesion-weight": 0.6500000357627869,
+            "alignment-enabled": 1,
+            "alignment-radius": 32,
+            "alignment-weight": 1,
+            "repulsion-enabled": 1,
+            "repulsion-radius": 10,
+            "repulsion-weight": 1.600000023841858,
+            "flee-enabled": 1,
+            "flee-radius": 100,
+            "flee-weight": 5,
+            "shoal-enabled": 0,
+            "shoal-threshold": 45,
+            "shoal-rearm": 20,
+            "shoal-duration": 0.6000000238418579,
+            "shoal-cooldown": 0.800000011920929,
+            "shoal-speed": 1.5,
+            "shoal-turn": 2,
+            "wind-enabled": 0,
+            "wind-octaves": 3,
+            "wind-scale": 160,
+            "wind-time": 0.14999999105930328,
+            "wind-weight": 1,
+            "wind-x": 1,
+            "wind-y": 1,
+            "wind-persistence": 0.5,
+            "wind-lacunarity": 2,
+            "orbit-radius": 400,
+            "orbit-period": 20,
+            "crossing-speed": 180,
+            "boid-hue": 183,
+            "direction-hue": 0,
+            "shoal-hue-enabled": 1,
+            "shoal-hue-offset": -132,
+            "predator-mode": 0,
+            "predator-speed": 100,
+            "predator-turn-rate": 120,
+            "predator-noise-scale": 192,
+            "predator-noise-time": 0.19999998807907104,
+            "predator-hunt-radius": 192,
+            "swarm-enabled": 0,
+            "swarm-weight": 1
+          }
+        },
+        {
+          "scenario": "gpu-wind-tiny",
+          "frames": 1801,
+          "meanFps": 59.97600959616153,
+          "p50ms": 16.69999999999709,
+          "p95ms": 17,
+          "p99ms": 17.19999999999709,
+          "meanTickMs": 0.1712382008538254,
+          "simulationHz": 59.9680170575693,
+          "minNeighbourBudget": 32,
+          "maxNeighbourBudget": 32,
+          "renderResolution": 256,
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "population": 100000,
+          "backend": "WebGPU compute",
+          "gpu": {
+            "population": 100000,
+            "densityReads": 0,
+            "steps": 3788,
+            "submittedSteps": 3789,
+            "submittedFrames": 3792,
+            "completedFrames": 3791,
+            "gpuMs": 0.131072,
+            "cpuSubmitMs": 0.20000000298023224,
+            "budget": 32,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            },
+            "inflight": 1,
+            "errors": []
+          },
+          "meanGpuComputeMs": 0.11633458745141557,
+          "worldSize": 256,
+          "crossingPredators": 0,
+          "totalPredators": 16,
+          "settings": {
+            "speed": 70,
+            "turn-rate": 180,
+            "cohesion-enabled": 1,
+            "cohesion-radius": 32,
+            "cohesion-weight": 0.6500000357627869,
+            "alignment-enabled": 1,
+            "alignment-radius": 32,
+            "alignment-weight": 1,
+            "repulsion-enabled": 1,
+            "repulsion-radius": 10,
+            "repulsion-weight": 1.600000023841858,
+            "flee-enabled": 1,
+            "flee-radius": 100,
+            "flee-weight": 5,
+            "shoal-enabled": 1,
+            "shoal-threshold": 45,
+            "shoal-rearm": 20,
+            "shoal-duration": 0.6000000238418579,
+            "shoal-cooldown": 0.800000011920929,
+            "shoal-speed": 1.5,
+            "shoal-turn": 2,
+            "wind-enabled": 1,
+            "wind-octaves": 6,
+            "wind-scale": 160,
+            "wind-time": 0.14999999105930328,
+            "wind-weight": 1,
+            "wind-x": 1,
+            "wind-y": 1,
+            "wind-persistence": 0.5,
+            "wind-lacunarity": 2,
+            "orbit-radius": 100,
+            "orbit-period": 20,
+            "crossing-speed": 180,
+            "boid-hue": 183,
+            "direction-hue": 0,
+            "shoal-hue-enabled": 1,
+            "shoal-hue-offset": -132,
+            "predator-mode": 0,
+            "predator-speed": 100,
+            "predator-turn-rate": 120,
+            "predator-noise-scale": 192,
+            "predator-noise-time": 0.19999998807907104,
+            "predator-hunt-radius": 192,
+            "swarm-enabled": 0,
+            "swarm-weight": 1
+          }
+        },
+        {
+          "scenario": "gpu-hunt",
+          "frames": 1801,
+          "meanFps": 60.001532521115024,
+          "p50ms": 16.69999999999709,
+          "p95ms": 17,
+          "p99ms": 17.20000000001164,
+          "meanTickMs": 0.20538589657842285,
+          "simulationHz": 60.001132725437365,
+          "minNeighbourBudget": 32,
+          "maxNeighbourBudget": 32,
+          "renderResolution": 1024,
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "population": 100000,
+          "backend": "WebGPU compute",
+          "gpu": {
+            "population": 100000,
+            "densityReads": 315,
+            "steps": 5679,
+            "submittedSteps": 5680,
+            "submittedFrames": 5684,
+            "completedFrames": 5683,
+            "gpuMs": 0.131072,
+            "cpuSubmitMs": 0.5,
+            "budget": 32,
+            "adapter": {
+              "vendor": "nvidia",
+              "architecture": "blackwell",
+              "device": "",
+              "description": "",
+              "isFallbackAdapter": false
+            },
+            "inflight": 1,
+            "errors": []
+          },
+          "meanGpuComputeMs": 0.16120182121043744,
+          "worldSize": 1024,
+          "crossingPredators": 0,
+          "totalPredators": 16,
+          "settings": {
+            "speed": 70,
+            "turn-rate": 180,
+            "cohesion-enabled": 1,
+            "cohesion-radius": 32,
+            "cohesion-weight": 0.6500000357627869,
+            "alignment-enabled": 1,
+            "alignment-radius": 32,
+            "alignment-weight": 1,
+            "repulsion-enabled": 1,
+            "repulsion-radius": 10,
+            "repulsion-weight": 1.600000023841858,
+            "flee-enabled": 1,
+            "flee-radius": 100,
+            "flee-weight": 5,
+            "shoal-enabled": 1,
+            "shoal-threshold": 45,
+            "shoal-rearm": 20,
+            "shoal-duration": 0.6000000238418579,
+            "shoal-cooldown": 0.800000011920929,
+            "shoal-speed": 1.5,
+            "shoal-turn": 2,
+            "wind-enabled": 1,
+            "wind-octaves": 6,
+            "wind-scale": 160,
+            "wind-time": 0.14999999105930328,
+            "wind-weight": 1,
+            "wind-x": 1,
+            "wind-y": 1,
+            "wind-persistence": 0.5,
+            "wind-lacunarity": 2,
+            "orbit-radius": 400,
+            "orbit-period": 20,
+            "crossing-speed": 180,
+            "boid-hue": 183,
+            "direction-hue": 0,
+            "shoal-hue-enabled": 1,
+            "shoal-hue-offset": -132,
+            "predator-mode": 2,
+            "predator-speed": 100,
+            "predator-turn-rate": 120,
+            "predator-noise-scale": 192,
+            "predator-noise-time": 0.19999998807907104,
+            "predator-hunt-radius": 192,
+            "swarm-enabled": 0,
+            "swarm-weight": 1
+          }
+        }
+      ]
+    }
+  }
+}

@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "test:browser": "node tools/browser-test.cjs",
-    "test:gpu": "node tools/gpu-test.cjs"
+    "test:gpu": "node tools/gpu-test.cjs",
+    "benchmark:stages": "node tools/perf-test.cjs"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1"

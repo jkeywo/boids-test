@@ -34,11 +34,6 @@ fn difference(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
   return d;
 }
 fn p(id: u32) -> f32 { return cfg.params[id / 4u][id % 4u]; }
-fn hueColour(degrees: f32) -> vec3<f32> {
-  let h = fract(degrees / 360.0);
-  let rgb = clamp(abs(fract(vec3(h) + vec3(0.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0) - 1.0, vec3(0.0), vec3(1.0));
-  return 0.86 * mix(vec3(1.0), rgb, vec3(0.73));
-}
 @vertex fn vertex(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) id: u32) -> VertexOut {
   var shape = array<vec2<f32>, 3>(vec2(4.0, 0.0), vec2(-2.0, -1.5), vec2(-2.0, 1.5));
   var point: vec2<f32>;
@@ -59,10 +54,7 @@ fn hueColour(degrees: f32) -> vec3<f32> {
     point-=cfg.data.x*floor(point/cfg.data.x);
     point = select(point, vec2(0.0), point >= vec2(cfg.data.x));
     direction = normalize(boid.velocity);
-    var hue = p(P_BOID_HUE);
-    if (p(P_DIRECTION_HUE) > 0.0) { hue += atan2(direction.y, direction.x) * 57.2957795131; }
-    if (boid.boost > 0.0 && p(P_SHOAL_HUE_ENABLED) > 0.0) { hue += p(P_SHOAL_HUE_OFFSET); }
-    color = hueColour(hue);
+    color = unpack4x8unorm(boid.padding).rgb;
   }
   let v = shape[vertexId]*scale;
   point+=vec2(v.x*direction.x-v.y*direction.y, v.x*direction.y+v.y*direction.x);
